@@ -583,7 +583,7 @@
 
   <!-- estoque -->
   <section id="aba-estoque" hidden>
-    <div class="titulo-sec"><h1>Estoque de peças</h1><button class="botao cheio" id="novo-item">+ Nova peça</button></div>
+    <div class="titulo-sec"><h1>Estoque</h1><button class="botao cheio" id="novo-item">+ Nova peça</button></div>
     <div class="placar tres" id="estoque-placar"></div>
     <div class="busca">
       <input id="busca-estoque" type="search" placeholder="Procurar peça…">
@@ -718,6 +718,8 @@
   <div class="janela-topo"><h2 id="j-venda-titulo">Nova venda</h2><button data-fechar aria-label="Fechar">×</button></div>
   <form class="campos" id="f-venda">
     <label class="campo todo"><span>Cliente</span><input name="cliente" list="clientes-lista" autocomplete="off" required></label>
+    <label class="campo"><span>Peça do estoque <small>(opcional)</small></span><select name="produto_id" id="f-venda-peca"></select></label>
+    <label class="campo" id="f-venda-qtd"><span>Quantas peças</span><input name="qtd" inputmode="numeric" value="1"></label>
     <label class="campo todo"><span>Produto ou serviço vendido</span><input name="descricao" required></label>
     <label class="campo"><span>Data da venda</span><input type="date" name="data" required></label>
     <label class="campo"><span>Valor (R$)</span><input name="valor" inputmode="decimal" placeholder="0,00" required></label>
@@ -882,7 +884,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v3';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v4';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -1169,11 +1171,28 @@
       ml: { configurado: true, conectado: true, ultima_busca: db.ml.ultima_busca },
     };
   });
-  const venda = d => ({ cliente: txt(d, 'cliente', 'o cliente'), descricao: txt(d, 'descricao', 'o que foi vendido'), data: d.data, valor: reais(d.valor, 'o valor', true),
-    forma: d.forma || null, pago: !!d.pago, pago_em: d.pago ? (d.pago_em || d.data) : null });
-  rota('POST', 'vendas', d => { admin(); const v = { id: novoId(), ...venda(d), criado_em: agora() }; db.vendas.push(v); return { id: v.id }; });
-  rota('PUT', 'vendas/:id', (d, q, id) => { admin(); Object.assign(db.vendas.find(v => v.id === +id), venda(d)); });
-  rota('DELETE', 'vendas/:id', (d, q, id) => { admin(); db.vendas = db.vendas.filter(v => v.id !== +id); });
+  const venda = d => {
+    const pid = +d.produto_id || null;
+    return { cliente: txt(d, 'cliente', 'o cliente'), descricao: txt(d, 'descricao', pid ? null : 'o que foi vendido'), data: d.data, valor: reais(d.valor, 'o valor', true),
+      forma: d.forma || null, pago: !!d.pago, pago_em: d.pago ? (d.pago_em || d.data) : null, produto_id: pid, qtd: pid ? qtd(d.qtd || 1, 'quantas peças foram vendidas') : null };
+  };
+  // a peça vendida sai do estoque; editar refaz a saída; excluir a venda devolve a peça (igual ao app.py)
+  const baixarVenda = (vid, v) => {
+    const p = v.produto_id && db.produtos.find(x => x.id === v.produto_id);
+    if (v.produto_id && (!p || !p.ativo)) invalido('Essa peça não está mais no estoque.');
+    const antigo = db.movimentos.filter(m => m.venda_id === vid), sem = db.movimentos.filter(m => m.venda_id !== vid);
+    if (!p) { db.movimentos = sem; return; }
+    const tem = sem.filter(m => m.produto_id === p.id).reduce((t, m) => t + m.qtd, 0);
+    if (v.qtd > tem) invalido(`Só tem ${tem} de ${p.nome} no estoque.`);
+    const antes = saldoDe(p.id);
+    db.movimentos = sem; v.descricao = v.descricao || p.nome;
+    db.movimentos.push({ id: novoId(), produto_id: p.id, qtd: -v.qtd, tipo: 'saida', motivo: 'Venda para ' + v.cliente, venda_id: vid, por: eu.nome, em: agora() });
+    avisoEstoque(p.id, antes);
+    return antigo;
+  };
+  rota('POST', 'vendas', d => { admin(); const v = { id: novoId(), ...venda(d), criado_em: agora() }; baixarVenda(v.id, v); db.vendas.push(v); return { id: v.id }; });
+  rota('PUT', 'vendas/:id', (d, q, id) => { admin(); const v = venda(d); baixarVenda(+id, v); Object.assign(db.vendas.find(x => x.id === +id), v); });
+  rota('DELETE', 'vendas/:id', (d, q, id) => { admin(); db.vendas = db.vendas.filter(v => v.id !== +id); db.movimentos = db.movimentos.filter(m => m.venda_id !== +id); });
   rota('POST', 'vendas/:id/pagamento', (d, q, id) => { admin(); pagar(db.vendas.find(v => v.id === +id), d); });
   const despesa = d => {
     const categoria = txt(d, 'categoria', 'a categoria'), ml = categoria === ML, pago = d.pago !== false;
@@ -1259,6 +1278,14 @@
     if (n < 0 || (n === 0 && !zero)) invalido(zero ? `Confira ${rotulo}: não pode ser negativa.` : `Confira ${rotulo}: precisa ser maior que zero.`);
     return n;
   };
+  // aviso "estoque acabando": no sistema real vai só para o celular da Alice e do Israel, quando passa do mínimo ou acaba
+  const avisoEstoque = (pid, antes) => {
+    const p = db.produtos.find(x => x.id === pid), depois = saldoDe(pid);
+    if (!p || !p.ativo || depois >= antes) return;
+    const titulo = depois <= 0 && antes > 0 ? 'Acabou no estoque' : depois <= p.minimo && antes > p.minimo ? 'Estoque acabando' : null;
+    if (titulo) setTimeout(() => window.notificacaoDemo && window.notificacaoDemo('No celular da Alice e do Israel (só administradores)', titulo,
+      `${p.nome} · ${depois > 0 ? 'restam ' + depois : 'nenhuma peça'}`), 500);
+  };
   const movimentar = (pid, q, tipo, motivo) => db.movimentos.push({ id: novoId(), produto_id: pid, qtd: q, tipo, motivo: motivo || null, por: eu.nome, em: agora() });
   const dadosProduto = d => ({ nome: txt(d, 'nome', 'o nome da peça').slice(0, 80), minimo: qtd(d.minimo || 0, 'o estoque mínimo', true) });
   const nomeRepetido = (nome, id) => db.produtos.some(p => p.nome.toLowerCase() === nome.toLowerCase() && p.id !== id);
@@ -1291,10 +1318,12 @@
       if (d.tipo === 'saida' && n > saldo) invalido(`Só tem ${saldo} no estoque. Se a conta estiver errada, use "Contagem" para acertar.`);
       movimentar(p.id, d.tipo === 'entrada' ? n : -n, d.tipo, txt(d, 'motivo'));
     } else invalido('Escolha entrada, saída ou contagem.');
+    avisoEstoque(p.id, saldo);
     return produtoJson(p);
   });
   rota('DELETE', 'movimentos/:id', (d, q, id) => {
     admin(); const m = db.movimentos.find(x => x.id === +id); if (!m) throw new Erro(404, 'Não encontrado.');
+    if (m.venda_id) invalido('Esta saída é de uma venda. Para desfazer, edite ou exclua a venda no Financeiro.');
     if (saldoDe(m.produto_id) - m.qtd < 0) invalido('Apagar este lançamento deixaria o saldo negativo. Apague primeiro as saídas mais novas.');
     db.movimentos = db.movimentos.filter(x => x.id !== m.id);
     return produtoJson(produtoDe(m.produto_id));
@@ -1437,6 +1466,7 @@ function mostrarSistema() {
     history.replaceState(null, '', location.pathname);
     sub = 'ml'; abrirAba('financeiro'); avisar('Conta do Mercado Livre conectada. Agora é só buscar as compras.');
   }
+  if (new URLSearchParams(location.search).get('aba') === 'estoque' && admin()) { history.replaceState(null, '', location.pathname); abrirAba('estoque'); }
 }
 
 // ── avisos no celular ──
@@ -1968,7 +1998,7 @@ function desenharFinanceiro() {
   } else if (sub === 'vendas') {
     h = `<div class="barra-acoes"><span class="total">Vendas em ${nomeMes(mesFin)}: <b>${total(fin.vendas)}</b></span><button class="botao cheio" id="nova-venda">+ Nova venda</button></div>` +
       tabela(['Data', 'Cliente', 'Vendido', 'Forma', '>Valor', 'Pagamento', ''], fin.vendas.map(v => `<tr>
-        <td class="num">${dataBr(v.data)}</td><td><b>${esc(v.cliente)}</b></td><td class="todo-m">${esc(v.descricao)}</td>
+        <td class="num">${dataBr(v.data)}</td><td><b>${esc(v.cliente)}</b></td><td class="todo-m">${esc(v.descricao)}${v.produto_id ? `<div class="miudo">${pecas(v.qtd)} do estoque</div>` : ''}</td>
         <td class="miudo">${esc(v.forma || 'Não informada')}</td><td class="direita num">${reais(v.valor)}</td><td>${pill(v, 'venda')}</td>
         <td class="direita"><button class="botao pequeno" data-venda="${v.id}">Editar</button></td></tr>`),
         'Nenhuma venda neste mês.');
@@ -2050,13 +2080,29 @@ async function abrirVenda(v = null) {
   $('#f-venda-apagar').hidden = !v;
   f.data.value = v ? v.data : (mesFin === iso(new Date()).slice(0, 7) ? iso(new Date()) : mesFin + '-01');
   if (v) { f.cliente.value = v.cliente; f.descricao.value = v.descricao; f.valor.value = valorBr(v.valor); f.forma.value = v.forma || ''; f.pago.checked = v.pago; }
+  await carregarEstoque();
+  // peça escolhida sai do estoque sozinha ao salvar (editar refaz a saída, excluir a venda devolve a peça)
+  const pecasVenda = itens.filter(i => i.ativo || (v && v.produto_id === i.id));
+  $('#f-venda-peca').innerHTML = '<option value="">Nenhuma (não mexe no estoque)</option>' +
+    pecasVenda.map(i => `<option value="${i.id}">${esc(i.nome)} · ${pecas(i.saldo)}</option>`).join('');
+  f.produto_id.value = v && v.produto_id ? v.produto_id : '';
+  f.qtd.value = v && v.qtd ? v.qtd : 1;
+  ajustarVenda();
   $('#j-venda').showModal();
   f.cliente.focus();
 }
+function ajustarVenda() {
+  const f = $('#f-venda'), peca = itens.find(i => i.id === +f.produto_id.value);
+  $('#f-venda-qtd').hidden = !peca;
+  f.descricao.required = !peca;
+  f.descricao.placeholder = peca ? peca.nome : '';
+}
+$('#f-venda-peca').onchange = ajustarVenda;
 $('#f-venda').onsubmit = async e => {
   e.preventDefault();
   const f = e.target;
   const dados = { cliente: f.cliente.value, descricao: f.descricao.value, data: f.data.value, valor: f.valor.value, forma: f.forma.value,
+                  produto_id: f.produto_id.value, qtd: f.produto_id.value ? f.qtd.value : '',
                   pago: f.pago.checked, pago_em: vendaAberta && vendaAberta.pago && f.pago.checked ? vendaAberta.pago_em : '' };
   try {
     await api(vendaAberta ? '/vendas/' + vendaAberta.id : '/vendas', vendaAberta ? 'PUT' : 'POST', dados);
@@ -2648,22 +2694,29 @@ async function gerarOS(s, botao) {
     doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M + L * 0.5, y + 6.2);
     y += 16;
 
+    // assinaturas: o cliente e cada técnico escalado, duas por linha
+    const assinam = [['Assinatura do cliente', s.cliente], ...(s.equipe.length ? s.equipe.map(p => ['Técnico', p.nome]) : [['Técnico responsável', '']])];
+    const altAss = Math.ceil(assinam.length / 2) * 22;
+
+    // linhas em branco para escrever à mão no atendimento (o que foi encontrado, peças trocadas, recomendações)
     secao('Observações');
     precisa(26);
     doc.setDrawColor(...LINHA); doc.setLineWidth(0.3);
-    const nLinhas = Math.max(3, Math.min(8, Math.floor((FIM - 34 - y) / 8)));  // ocupa o espaço que sobra antes das assinaturas
+    const nLinhas = Math.max(3, Math.min(8, Math.floor((FIM - altAss - 16 - y) / 8)));  // ocupa o espaço que sobra antes das assinaturas
     for (let i = 0; i < nLinhas; i++) doc.line(M, y + 4 + i * 8, W - M, y + 4 + i * 8);
     y += nLinhas * 8 + 6;
 
     // assinaturas no pé da página (ou na próxima, se não couber)
-    precisa(26);
-    y = Math.max(y, FIM - 18);
+    precisa(altAss);
+    y = Math.max(y + 6, FIM - altAss + 8);
     doc.setDrawColor(...TINTA); doc.setLineWidth(0.3);
     const wa = L / 2 - 8;
-    doc.line(M, y, M + wa, y); doc.line(W - M - wa, y, W - M, y);
-    texto(TINTA, 9, 'bold'); doc.text('Assinatura do cliente', M, y + 5); doc.text('Técnico responsável', W - M - wa, y + 5);
-    texto(SUAVE, 8.5); doc.text(doc.splitTextToSize(s.cliente, wa)[0], M, y + 9.5);
-    doc.text(doc.splitTextToSize(s.equipe.map(p => p.nome).join(', ') || EMPRESA.nome, wa)[0], W - M - wa, y + 9.5);
+    assinam.forEach(([rotulo, nome], i) => {
+      const x = i % 2 ? W - M - wa : M, ya = y + Math.floor(i / 2) * 22;
+      doc.line(x, ya, x + wa, ya);
+      texto(TINTA, 9, 'bold'); doc.text(rotulo, x, ya + 5);
+      if (nome) { texto(SUAVE, 8.5); doc.text(doc.splitTextToSize(nome, wa)[0], x, ya + 9.5); }
+    });
 
     // rodapé em todas as páginas
     const paginas = doc.getNumberOfPages();
