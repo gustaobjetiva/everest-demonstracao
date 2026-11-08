@@ -617,7 +617,7 @@
       <button class="botao cheio" id="nova-pessoa">+ Adicionar pessoa</button>
     </div>
     <table class="tabela">
-      <thead><tr><th>Nome</th><th>Usuário de entrada</th><th>Acesso</th><th>Avisos no celular</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Usuário de entrada</th><th>Avisos no celular</th><th>Acesso</th><th></th></tr></thead>
       <tbody id="equipe-lista"></tbody>
     </table>
   </section>
@@ -745,8 +745,8 @@
     <label class="campo"><span>Forma de pagamento</span><select name="forma" data-formas></select></label>
     <div class="campo todo" id="f-ml" style="display:contents">
       <label class="campo"><span>Número do pedido</span><input name="pedido" inputmode="numeric"></label>
-      <label class="campo"><span>Quem comprou</span><input name="comprador" list="equipe-lista" autocomplete="off"></label>
-      <datalist id="equipe-lista"></datalist>
+      <label class="campo"><span>Quem comprou</span><input name="comprador" list="compradores-lista" autocomplete="off"></label>
+      <datalist id="compradores-lista"></datalist>
       <label class="campo marcar"><input type="checkbox" name="entregue"><span>Já foi entregue</span></label>
     </div>
     <label class="campo marcar"><input type="checkbox" name="pago" checked><span>Já foi pago</span></label>
@@ -884,7 +884,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v4';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v5';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -900,8 +900,9 @@
   const invalido = m => { throw new Erro(400, m); };
   const txt = (d, k, rotulo) => { const v = String(d[k] ?? '').trim(); if (rotulo && !v) invalido('Preencha ' + rotulo + '.'); return v || null; };
   const reais = (v, rotulo = 'o valor', positivo = false) => {
-    let s = String(v ?? '').trim() || '0';
+    let s = String(v ?? '').replace('R$', '').trim() || '0';
     if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');  // 1.250 = mil duzentos e cinquenta
     const n = Number(s);
     if (isNaN(n)) invalido(`Confira ${rotulo}: use só números.`);
     if (n < 0 || (positivo && n === 0)) invalido(positivo ? `Confira ${rotulo}: precisa ser maior que zero.` : `Confira ${rotulo}: não pode ser negativo.`);
@@ -1020,15 +1021,20 @@
   const meus = s => eu.papel === 'admin' || s.equipe.includes(eu.id);
   const ordem = (a, b) => a.data.localeCompare(b.data) || (a.hora || '99').localeCompare(b.hora || '99') || a.id - b.id;
   const um = id => { const s = db.servicos.find(x => x.id === +id); if (!s || !meus(s)) throw new Erro(404, 'Não encontrado.'); return s; };
+  const travarMes = (...datas) => {
+    for (const m of [...new Set(datas.filter(Boolean).map(x => String(x).slice(0, 7)))].sort())
+      if ((db.fechamentos[m] || {}).confirmado_em) invalido(`O fechamento de ${m.slice(5)}/${m.slice(0, 4)} já foi confirmado. Para mudar valores desse mês, reabra o fechamento (Financeiro → Fechamento do mês).`);
+  };
   const mudarStatus = (s, novo) => {
     if (s.status === novo) return;
     if (s.pago) invalido('Esse serviço já está pago. Desmarque o pagamento no Financeiro antes de reabrir.');
+    travarMes(novo === 'realizado' ? (s.realizado_em || hoje()) : s.realizado_em);
     Object.assign(s, { status_antes: s.status, status: novo, status_por: eu.nome, status_por_id: eu.id, status_em: agora(), alterado_em: agora(),
       realizado_em: novo === 'realizado' ? (s.realizado_em || hoje()) : null });
   };
   const acharCliente = (d, campo = 'cliente') => {
     const nome = txt(d, campo, 'o nome do cliente'), telefone = txt(d, 'telefone'), endereco = txt(d, 'endereco'), documento = txt(d, 'documento'), fone = digitos(telefone);
-    let c = fone.length >= 8 ? db.clientes.find(x => digitos(x.telefone) === fone) : db.clientes.find(x => x.nome.toLowerCase() === nome.toLowerCase() && !digitos(x.telefone));
+    let c = fone.length >= 8 ? db.clientes.find(x => digitos(x.telefone) === fone && x.nome.toLowerCase() === nome.toLowerCase()) : db.clientes.find(x => x.nome.toLowerCase() === nome.toLowerCase() && !digitos(x.telefone));
     if (c) Object.assign(c, { nome, telefone: telefone || c.telefone, endereco: endereco || c.endereco, documento: documento || c.documento, fixo: c.fixo || !!d.fixo });
     else { c = { id: novoId(), nome, telefone, endereco, documento, fixo: !!d.fixo, criado_em: agora() }; db.clientes.push(c); }
     return c.id;
@@ -1050,8 +1056,10 @@
       a_receber: soma(r.filter(x => !x.pago && (x.data || '').startsWith(mes))),
       lucro: Math.round(cent(recebido) - cent(soma(db.despesas.filter(x => x.data.startsWith(mes))))) / 100 };
   };
-  const pagar = (item, d) => {
+  const pagar = (item, d, travar = true) => {
     if (d.forma && !FORMAS.includes(d.forma)) invalido('Forma de pagamento inválida.');
+    const novoEm = d.pago ? (d.pago_em || hoje()) : null;
+    if (travar && (!!d.pago !== !!item.pago || novoEm !== item.pago_em)) travarMes(item.pago ? item.pago_em : null, novoEm);
     item.pago = !!d.pago; item.pago_em = d.pago ? (d.pago_em || hoje()) : null; item.forma = d.forma || item.forma;
   };
   const despesaJson = x => ({ ...x, anexos: x.anexos.map(a => ({ id: a.id, nome: a.nome, tipo: a.tipo })) });
@@ -1094,13 +1102,23 @@
     return sj(s);
   });
   rota('PUT', 'servicos/:id', (d, q, id) => {
-    admin(); const s = um(id);
-    Object.assign(s, dadosServico(d), { cliente_id: acharCliente(d), alterado_em: agora() });
+    admin(); const s = um(id), novo = dadosServico(d);
+    if (novo.valor !== s.valor) {
+      if (s.pago) invalido('Esse serviço já está pago. Para mudar o valor, desmarque o pagamento no Financeiro antes.');
+      travarMes(s.realizado_em);
+    }
+    if (d.status && d.status !== s.status && s.pago) invalido('Esse serviço já está pago. Desmarque o pagamento no Financeiro antes de reabrir.');
+    Object.assign(s, novo, { cliente_id: acharCliente(d), alterado_em: agora() });
     if (d.status) mudarStatus(s, d.status);
     avisoSimulado(s, 'Serviço alterado');
     return sj(s);
   });
-  rota('DELETE', 'servicos/:id', (d, q, id) => { admin(); db.servicos = db.servicos.filter(s => s.id !== +id); });
+  rota('DELETE', 'servicos/:id', (d, q, id) => {
+    admin(); const s = um(id);
+    if (s.pago) invalido('Esse serviço já está pago e conta no financeiro. Para excluir, desmarque o pagamento antes.');
+    travarMes(s.realizado_em);
+    db.servicos = db.servicos.filter(x => x.id !== s.id);
+  });
   rota('POST', 'servicos/:id/status', (d, q, id) => {
     const s = um(id);
     if (eu.papel !== 'admin') invalido(s.status === 'realizado' ? 'Esse serviço já foi finalizado.' : 'Para finalizar, mande a foto do serviço pronto.');
@@ -1176,34 +1194,56 @@
     return { cliente: txt(d, 'cliente', 'o cliente'), descricao: txt(d, 'descricao', pid ? null : 'o que foi vendido'), data: d.data, valor: reais(d.valor, 'o valor', true),
       forma: d.forma || null, pago: !!d.pago, pago_em: d.pago ? (d.pago_em || d.data) : null, produto_id: pid, qtd: pid ? qtd(d.qtd || 1, 'quantas peças foram vendidas') : null };
   };
-  // a peça vendida sai do estoque; editar refaz a saída; excluir a venda devolve a peça (igual ao app.py)
-  const baixarVenda = (vid, v) => {
-    const p = v.produto_id && db.produtos.find(x => x.id === v.produto_id);
-    if (v.produto_id && (!p || !p.ativo)) invalido('Essa peça não está mais no estoque.');
-    const antigo = db.movimentos.filter(m => m.venda_id === vid), sem = db.movimentos.filter(m => m.venda_id !== vid);
-    if (!p) { db.movimentos = sem; return; }
-    const tem = sem.filter(m => m.produto_id === p.id).reduce((t, m) => t + m.qtd, 0);
-    if (v.qtd > tem) invalido(`Só tem ${tem} de ${p.nome} no estoque.`);
-    const antes = saldoDe(p.id);
-    db.movimentos = sem; v.descricao = v.descricao || p.nome;
-    db.movimentos.push({ id: novoId(), produto_id: p.id, qtd: -v.qtd, tipo: 'saida', motivo: 'Venda para ' + v.cliente, venda_id: vid, por: eu.nome, em: agora() });
-    avisoEstoque(p.id, antes);
-    return antigo;
+  // a peça vendida sai do estoque. Nada é apagado: editar lança só a diferença, excluir devolve com uma entrada (igual ao app.py)
+  const baixarVenda = (vid, v, excluir = false) => {
+    const p = !excluir && v.produto_id && db.produtos.find(x => x.id === v.produto_id);
+    if (!excluir && v.produto_id && !p) invalido('Essa peça não existe no estoque.');
+    if (p) v.descricao = v.descricao || p.nome;
+    const alvo = p ? { [p.id]: -v.qtd } : {}, atual = {};
+    db.movimentos.filter(m => m.venda_id === vid).forEach(m => atual[m.produto_id] = (atual[m.produto_id] || 0) + m.qtd);
+    const jaTinha = db.movimentos.some(m => m.venda_id === vid), lancar = [];
+    for (const pid of new Set([...Object.keys(alvo), ...Object.keys(atual)].map(Number))) {
+      const dif = (alvo[pid] || 0) - (atual[pid] || 0); if (!dif) continue;
+      const peca = produtoDe(pid), saldo = saldoDe(pid);
+      if (dif < 0 && pid in alvo && !peca.ativo && !atual[pid]) invalido('Essa peça está desativada no estoque.');
+      if (dif < 0 && saldo + dif < 0) invalido(`Só tem ${saldo - (atual[pid] || 0)} de ${peca.nome} no estoque.`);
+      lancar.push([pid, dif, saldo]);
+    }
+    for (const [pid, dif, saldo] of lancar) {  // só mexe depois de conferir tudo
+      db.movimentos.push({ id: novoId(), produto_id: pid, qtd: dif, tipo: dif < 0 ? 'saida' : 'entrada', venda_id: vid, desfaz: null, por: eu.nome, em: agora(),
+        motivo: `Venda para ${v.cliente}${excluir ? ' (excluída)' : jaTinha ? ' (alterada)' : ''}` });
+      avisoEstoque(pid, saldo);
+    }
   };
-  rota('POST', 'vendas', d => { admin(); const v = { id: novoId(), ...venda(d), criado_em: agora() }; baixarVenda(v.id, v); db.vendas.push(v); return { id: v.id }; });
-  rota('PUT', 'vendas/:id', (d, q, id) => { admin(); const v = venda(d); baixarVenda(+id, v); Object.assign(db.vendas.find(x => x.id === +id), v); });
-  rota('DELETE', 'vendas/:id', (d, q, id) => { admin(); db.vendas = db.vendas.filter(v => v.id !== +id); db.movimentos = db.movimentos.filter(m => m.venda_id !== +id); });
-  rota('POST', 'vendas/:id/pagamento', (d, q, id) => { admin(); pagar(db.vendas.find(v => v.id === +id), d); });
+  const vendaDe = id => { const v = db.vendas.find(x => x.id === +id); if (!v) throw new Erro(404, 'Não encontrado.'); return v; };
+  rota('POST', 'vendas', d => { admin(); const v = { id: novoId(), ...venda(d), criado_em: agora() }; travarMes(v.data, v.pago_em); baixarVenda(v.id, v); db.vendas.push(v); return { id: v.id }; });
+  rota('PUT', 'vendas/:id', (d, q, id) => {
+    admin(); const atual = vendaDe(id), v = venda(d);
+    if (atual.pago && v.valor !== atual.valor) invalido('Essa venda já está paga. Para mudar o valor, desmarque o pagamento antes.');
+    if ([v.data, v.valor, v.pago, v.pago_em].join() !== [atual.data, atual.valor, atual.pago, atual.pago_em].join()) travarMes(atual.data, atual.pago_em, v.data, v.pago_em);
+    baixarVenda(atual.id, v); Object.assign(atual, v, { descricao: v.descricao || atual.descricao });
+  });
+  rota('DELETE', 'vendas/:id', (d, q, id) => {
+    admin(); const v = vendaDe(id);
+    if (v.pago) invalido('Essa venda já está paga e conta no financeiro. Para excluir, desmarque o pagamento antes.');
+    travarMes(v.data); baixarVenda(v.id, v, true); db.vendas = db.vendas.filter(x => x.id !== v.id);
+  });
+  rota('POST', 'vendas/:id/pagamento', (d, q, id) => { admin(); pagar(vendaDe(id), d); });
   const despesa = d => {
     const categoria = txt(d, 'categoria', 'a categoria'), ml = categoria === ML, pago = d.pago !== false;
     return { descricao: txt(d, 'descricao', ml ? 'o produto comprado' : 'a descrição do gasto'), data: d.data, valor: reais(d.valor, 'o valor', true), categoria,
       forma: d.forma || null, pedido: ml ? txt(d, 'pedido') : null, comprador: ml ? txt(d, 'comprador') : null, entregue: ml ? !!d.entregue : null,
       pago, pago_em: pago ? (d.pago_em || d.data) : null };
   };
-  rota('POST', 'despesas', d => { admin(); const x = { id: novoId(), anexos: [], ...despesa(d), criado_em: agora() }; db.despesas.push(x); return { id: x.id }; });
-  rota('PUT', 'despesas/:id', (d, q, id) => { admin(); Object.assign(db.despesas.find(x => x.id === +id), despesa(d)); });
-  rota('DELETE', 'despesas/:id', (d, q, id) => { admin(); db.despesas = db.despesas.filter(x => x.id !== +id); });
-  rota('POST', 'despesas/:id/pagamento', (d, q, id) => { admin(); pagar(db.despesas.find(x => x.id === +id), d); });
+  const despesaDe = id => { const x = db.despesas.find(y => y.id === +id); if (!x) throw new Erro(404, 'Não encontrado.'); return x; };
+  rota('POST', 'despesas', d => { admin(); const x = { id: novoId(), anexos: [], ...despesa(d), criado_em: agora() }; travarMes(x.data); db.despesas.push(x); return { id: x.id }; });
+  rota('PUT', 'despesas/:id', (d, q, id) => {
+    admin(); const atual = despesaDe(id), x = despesa(d);
+    if (x.data !== atual.data || x.valor !== atual.valor) travarMes(atual.data, x.data);
+    Object.assign(atual, x);
+  });
+  rota('DELETE', 'despesas/:id', (d, q, id) => { admin(); const x = despesaDe(id); travarMes(x.data); db.despesas = db.despesas.filter(y => y.id !== x.id); });
+  rota('POST', 'despesas/:id/pagamento', (d, q, id) => { admin(); pagar(despesaDe(id), d); });
   rota('POST', 'despesas/:id/anexos', async (d, q, id) => {
     admin(); const x = db.despesas.find(y => y.id === +id);
     for (const f of d.getAll('arquivo')) x.anexos.push({ id: novoId(), nome: f.name, tipo: f.type || 'image/jpeg', url: await lerArquivo(f) });
@@ -1232,7 +1272,7 @@
       if (Math.abs(s - 100) > 0.001) invalido(`A soma das porcentagens está em ${String(s).replace('.', ',')}%. Precisa dar 100% para confirmar.`);
       if (total <= 0) invalido(base === 'lucro' ? 'O lucro deste mês não está positivo: não há o que dividir.' : 'O valor base deste mês está zerado.');
     }
-    const tc = cent(total), vs = linhas.map(l => Math.round(tc * l.percentual / 100));
+    const tc = cent(total), vs = linhas.map(l => Math.floor(tc * l.percentual / 100 + 0.5));
     if (linhas.length && Math.abs(s - 100) < 0.001) { const ps = linhas.map(l => l.percentual); vs[ps.indexOf(Math.max(...ps))] += tc - vs.reduce((a, b) => a + b, 0); }
     db.fechamentos[mes] = { mes, base, faturamento: total, confirmado_em: d.confirmar ? agora() : null, confirmado_por: d.confirmar ? eu.nome : null, criado_em: agora() };
     db.divisoes = db.divisoes.filter(x => x.mes !== mes).concat(linhas.map((l, i) => ({ id: novoId(), mes, ...l, valor: vs[i] / 100, ordem: i, pago: false, pago_em: null, forma: null })));
@@ -1244,7 +1284,7 @@
   });
   rota('POST', 'divisoes/:id/pagamento', (d, q, id) => {
     admin(); const x = db.divisoes.find(y => y.id === +id);
-    if (!(db.fechamentos[x.mes] || {}).confirmado_em) invalido('Confirme o fechamento antes de marcar os pagamentos.'); pagar(x, d);
+    if (!(db.fechamentos[x.mes] || {}).confirmado_em) invalido('Confirme o fechamento antes de marcar os pagamentos.'); pagar(x, d, false);
   });
   rota('GET', 'relatorio', (d, q) => {
     admin(); const mes = q.get('mes'), meses = [mes]; for (let i = 0; i < 5; i++) meses.push(mesAntes(meses[i]));
@@ -1305,7 +1345,8 @@
   });
   rota('GET', 'estoque/:id', (d, q, id) => {
     admin(); const p = produtoDe(id);
-    return { produto: produtoJson(p), movimentos: db.movimentos.filter(m => m.produto_id === p.id).sort((a, b) => b.em.localeCompare(a.em) || b.id - a.id).slice(0, 200) };
+    return { produto: produtoJson(p), movimentos: db.movimentos.filter(m => m.produto_id === p.id).sort((a, b) => b.em.localeCompare(a.em) || b.id - a.id).slice(0, 200)
+      .map(m => ({ ...m, desfeito: db.movimentos.some(x => x.desfaz === m.id) })) };
   });
   rota('POST', 'estoque/:id/movimento', (d, q, id) => {
     admin(); const p = produtoDe(id), saldo = saldoDe(p.id);
@@ -1321,11 +1362,17 @@
     avisoEstoque(p.id, saldo);
     return produtoJson(p);
   });
-  rota('DELETE', 'movimentos/:id', (d, q, id) => {
+  rota('POST', 'movimentos/:id/desfazer', (d, q, id) => {
     admin(); const m = db.movimentos.find(x => x.id === +id); if (!m) throw new Erro(404, 'Não encontrado.');
-    if (m.venda_id) invalido('Esta saída é de uma venda. Para desfazer, edite ou exclua a venda no Financeiro.');
-    if (saldoDe(m.produto_id) - m.qtd < 0) invalido('Apagar este lançamento deixaria o saldo negativo. Apague primeiro as saídas mais novas.');
-    db.movimentos = db.movimentos.filter(x => x.id !== m.id);
+    if (m.venda_id) invalido('Este lançamento é de uma venda. Para desfazer, edite ou exclua a venda no Financeiro.');
+    if (m.desfaz) invalido('Este lançamento já é uma correção. Se precisar, lance uma entrada ou saída.');
+    if (db.movimentos.some(x => x.desfaz === m.id)) invalido('Este lançamento já foi desfeito.');
+    const saldo = saldoDe(m.produto_id);
+    if (saldo - m.qtd < 0) invalido('Desfazer este lançamento deixaria o saldo negativo (as peças já saíram). Use "Contagem" para acertar.');
+    const nome = { entrada: 'entrada', saida: 'saída', ajuste: 'acerto' }[m.tipo];
+    db.movimentos.push({ id: novoId(), produto_id: m.produto_id, qtd: -m.qtd, tipo: 'ajuste', motivo: `Desfeito: ${nome} de ${m.em.slice(0, 10).split('-').reverse().join('/')}`,
+      venda_id: null, desfaz: m.id, por: eu.nome, em: agora() });
+    avisoEstoque(m.produto_id, saldo);
     return produtoJson(produtoDe(m.produto_id));
   });
 
@@ -1768,6 +1815,7 @@ $('#f-servico').onsubmit = async e => {
   const dados = Object.fromEntries(['data', 'hora', 'cliente', 'telefone', 'documento', 'endereco', 'descricao', 'valor', 'prioridade', 'status'].map(k => [k, f[k].value]));
   dados.equipe = $$('[name="equipe"]:checked', f).map(c => +c.value);
   dados.fixo = !$('#f-fixo').hidden && f.fixo.checked;
+  if (editando && dados.status === editando.status) delete dados.status;
   botao.disabled = true; erro.hidden = true;
   try {
     const s = await api(editando ? `/servicos/${editando.id}` : '/servicos', editando ? 'PUT' : 'POST', dados);
@@ -2100,14 +2148,17 @@ function ajustarVenda() {
 $('#f-venda-peca').onchange = ajustarVenda;
 $('#f-venda').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target;
+  const f = e.target, botao = $('button.cheio', f);
+  if (botao.disabled) return;
   const dados = { cliente: f.cliente.value, descricao: f.descricao.value, data: f.data.value, valor: f.valor.value, forma: f.forma.value,
                   produto_id: f.produto_id.value, qtd: f.produto_id.value ? f.qtd.value : '',
                   pago: f.pago.checked, pago_em: vendaAberta && vendaAberta.pago && f.pago.checked ? vendaAberta.pago_em : '' };
+  botao.disabled = true; $('.erro', f).hidden = true;
   try {
     await api(vendaAberta ? '/vendas/' + vendaAberta.id : '/vendas', vendaAberta ? 'PUT' : 'POST', dados);
     $('#j-venda').close(); avisar('Venda salva.'); mesFin = dados.data.slice(0, 7); carregarFinanceiro();
   } catch (x) { $('.erro', f).textContent = x.message; $('.erro', f).hidden = false; }
+  botao.disabled = false;
 };
 $('#f-venda-apagar').onclick = async () => {
   if (!confirm('Excluir esta venda? Isso não pode ser desfeito.')) return;
@@ -2128,7 +2179,7 @@ async function abrirDespesa(d = null, ml = false) {
   await carregarEquipe();
   const f = $('#f-despesa');
   f.reset(); $('.erro', f).hidden = true;
-  $('#equipe-lista').innerHTML = equipe.filter(p => p.ativo).map(p => `<option value="${esc(p.nome)}">`).join('');
+  $('#compradores-lista').innerHTML = equipe.filter(p => p.ativo).map(p => `<option value="${esc(p.nome)}">`).join('');
   ml = d ? d.categoria === 'Mercado Livre' : ml;
   $('#j-despesa-titulo').textContent = d ? (ml ? 'Compra do Mercado Livre' : 'Editar despesa') : (ml ? 'Nova compra no Mercado Livre' : 'Nova despesa');
   $('#f-despesa-apagar').hidden = !d;
@@ -2151,7 +2202,7 @@ function desenharAnexos() {
     <button type="button" data-tirar="${a.id}" aria-label="Remover ${esc(a.nome)}">×</button></span>`).join('');
   $$('#f-anexos [data-tirar]').forEach(b => b.onclick = async () => {
     if (!confirm('Remover este comprovante?')) return;
-    await api('/anexos/' + b.dataset.tirar, 'DELETE');
+    try { await api('/anexos/' + b.dataset.tirar, 'DELETE'); } catch (e) { return avisar(e.message, true); }
     despesaAberta.anexos = despesaAberta.anexos.filter(a => a.id !== +b.dataset.tirar);
     desenharAnexos(); carregarFinanceiro();
   });
@@ -2225,7 +2276,7 @@ $('#f-cli').onsubmit = async e => {
 };
 $('#f-cli-tirar').onclick = async () => {
   if (!confirm(`Tirar ${clienteAberto.nome} dos clientes fixos? O histórico de atendimentos continua guardado.`)) return;
-  await api('/clientes/' + clienteAberto.id, 'PUT', { fixo: false });
+  try { await api('/clientes/' + clienteAberto.id, 'PUT', { fixo: false }); } catch (e) { return avisar(e.message, true); }
   $('#j-cli').close(); avisar('Cliente tirado dos fixos.'); clientes = []; await carregarClientes(); desenharClientes();
 };
 
@@ -2236,7 +2287,10 @@ let fech = null, rascunho = null, baseQuerida = null;  // baseQuerida: a DRE ped
 const NOME_BASE = { recebido: 'recebido no mês', faturado: 'faturado no mês', lucro: 'lucro do mês', manual: 'valor informado' };
 const pct = v => { const n = parseFloat(String(v).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : n; };
 const pctBr = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
-const reaisDigitado = v => { const s = String(v || '').trim(); return parseFloat(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) || 0; };
+const reaisDigitado = v => {  // mesma leitura do servidor: 1.250,50 · 1250,50 · 1.250 (milhar) · 1250.5
+  const s = String(v || '').replace('R$', '').trim();
+  return parseFloat(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s) || 0;
+};
 
 async function carregarFechamento() {
   fech = await api('/fechamento?mes=' + mesFin);
@@ -2303,7 +2357,7 @@ function desenharFechamento() {
   $('#fech-mais').onclick = () => { rascunho.linhas.push({ nome: '', tipo: 'funcionario', percentual: '' }); desenharLinhasFech(true); };
   const copiar = $('#fech-copiar');
   if (copiar) copiar.onclick = () => { rascunho.linhas = fech.anteriores.map(l => ({ ...l, percentual: String(l.percentual).replace('.', ',') })); desenharLinhasFech(); };
-  $('#fech-salvar').onclick = () => salvarFechamento(false);
+  $('#fech-salvar').onclick = () => salvarFechamento(false).catch(e => avisar(e.message, true));
   $('#fech-revisar').onclick = revisarFechamento;
 }
 function valoresFech() {
@@ -2527,7 +2581,7 @@ $('#f-item').onsubmit = async e => {
 $('#f-item-ativo').onclick = async () => {
   const ativar = !itemEditando.ativo;
   if (!ativar && !confirm(`Desativar ${itemEditando.nome}? Ela sai da lista e dos avisos, mas o histórico fica guardado.`)) return;
-  await api('/estoque/' + itemEditando.id, 'PUT', { ativo: ativar });
+  try { await api('/estoque/' + itemEditando.id, 'PUT', { ativo: ativar }); } catch (e) { return avisar(e.message, true); }
   $('#j-item').close(); avisar(ativar ? 'Peça reativada.' : 'Peça desativada.'); await atualizarEstoque();
 };
 async function atualizarEstoque() {
@@ -2580,22 +2634,23 @@ async function abrirItem(id) {
       <button class="botao pequeno" data-m="contagem">Contagem</button>` : ''}<button class="botao pequeno" data-editar-item>Editar</button></div>`;
   $('#j-estoque-lista').innerHTML = r.movimentos.length ? r.movimentos.map(m => `<tr>
     <td class="num">${dataBr(m.em)}<div class="miudo">${m.em.slice(11, 16)} · ${esc(m.por)}</div></td>
-    <td>${NOME_MOV[m.tipo]}</td>
+    <td>${m.desfaz ? 'Correção' : m.venda_id ? 'Venda' : NOME_MOV[m.tipo]}${m.desfeito ? '<div class="miudo">desfeito</div>' : ''}</td>
     <td class="direita num ${m.qtd > 0 ? 'mov-mais' : 'mov-menos'}">${m.qtd > 0 ? '+' : '-'}${pecas(Math.abs(m.qtd))}</td>
     <td class="todo-m miudo">${esc(m.motivo || '')}</td>
-    <td class="direita"><button class="botao pequeno" data-apagar-mov="${m.id}">Apagar</button></td></tr>`).join('')
+    <td class="direita">${m.desfaz || m.desfeito || m.venda_id ? '' : `<button class="botao pequeno" data-desfazer-mov="${m.id}">Desfazer</button>`}</td></tr>`).join('')
     : '<tr><td colspan="5" class="miudo" style="padding:26px;text-align:center">Nenhum lançamento ainda.</td></tr>';
   $$('#j-estoque-topo [data-m]').forEach(b => b.onclick = () => abrirMov(i, b.dataset.m));
   $('#j-estoque-topo [data-editar-item]').onclick = () => abrirCadastroItem(i);
-  $$('#j-estoque-lista [data-apagar-mov]').forEach(b => b.onclick = async () => {
-    if (!confirm('Apagar este lançamento? O saldo volta a ser como era sem ele.')) return;
-    try { await api('/movimentos/' + b.dataset.apagarMov, 'DELETE'); avisar('Lançamento apagado.'); await atualizarEstoque(); } catch (x) { avisar(x.message, true); }
+  $$('#j-estoque-lista [data-desfazer-mov]').forEach(b => b.onclick = async () => {
+    if (!confirm('Desfazer este lançamento? O sistema lança o contrário e os dois ficam no histórico.')) return;
+    try { await api(`/movimentos/${b.dataset.desfazerMov}/desfazer`, 'POST', {}); avisar('Lançamento desfeito.'); await atualizarEstoque(); } catch (x) { avisar(x.message, true); }
   });
   if (!$('#j-estoque').open) $('#j-estoque').showModal();
 }
 
 // ── ordem de serviço em PDF (feita no próprio aparelho: funciona igual no celular e no computador) ──
 const EMPRESA = { nome: 'Everest Refrigeração', cnpj: '59.089.897/0001-14' };
+const OS_ASSINATURAS = true;  // a Everest ainda vai decidir se a ordem leva assinaturas; false tira (as observações ocupam o espaço)
 let jsPdf = null;
 function carregarJsPdf() {
   return jsPdf ||= new Promise((ok, falha) => {
@@ -2694,9 +2749,9 @@ async function gerarOS(s, botao) {
     doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M + L * 0.5, y + 6.2);
     y += 16;
 
-    // assinaturas: o cliente e cada técnico escalado, duas por linha
-    const assinam = [['Assinatura do cliente', s.cliente], ...(s.equipe.length ? s.equipe.map(p => ['Técnico', p.nome]) : [['Técnico responsável', '']])];
-    const altAss = Math.ceil(assinam.length / 2) * 22;
+    // assinaturas: o cliente e o responsável da Everest (quem emitiu a ordem)
+    const assinam = OS_ASSINATURAS ? [['Assinatura do cliente', s.cliente], ['Responsável · ' + EMPRESA.nome, eu.nome]] : [];
+    const altAss = assinam.length ? 22 : 0;
 
     // linhas em branco para escrever à mão no atendimento (o que foi encontrado, peças trocadas, recomendações)
     secao('Observações');
@@ -2707,8 +2762,7 @@ async function gerarOS(s, botao) {
     y += nLinhas * 8 + 6;
 
     // assinaturas no pé da página (ou na próxima, se não couber)
-    precisa(altAss);
-    y = Math.max(y + 6, FIM - altAss + 8);
+    if (assinam.length) { precisa(altAss); y = Math.max(y + 6, FIM - altAss + 8); }
     doc.setDrawColor(...TINTA); doc.setLineWidth(0.3);
     const wa = L / 2 - 8;
     assinam.forEach(([rotulo, nome], i) => {
@@ -2753,7 +2807,8 @@ async function buscarMl(b) {
   b.disabled = true; b.textContent = 'Buscando…';
   try {
     const r = await api('/mercadolivre/buscar', 'POST', {});
-    avisar(r.novas || r.atualizadas ? `${r.novas} compra${r.novas !== 1 ? 's' : ''} nova${r.novas !== 1 ? 's' : ''}, ${r.atualizadas} atualizada${r.atualizadas !== 1 ? 's' : ''}.` : 'Nenhuma compra nova.');
+    avisar((r.novas || r.atualizadas ? `${r.novas} compra${r.novas !== 1 ? 's' : ''} nova${r.novas !== 1 ? 's' : ''}, ${r.atualizadas} atualizada${r.atualizadas !== 1 ? 's' : ''}.` : 'Nenhuma compra nova.') +
+      (r.fora ? ` ${r.fora} de mês já fechado ficou de fora: lance à mão se precisar.` : ''));
     carregarFinanceiro();
   } catch (e) { avisar(e.message, true); b.disabled = false; b.textContent = 'Buscar compras agora'; }
 }
@@ -2818,7 +2873,8 @@ $('#f-nota').onsubmit = async e => {
 };
 $('#f-nota-apagar').onclick = async () => {
   if (!confirm('Excluir esta nota?')) return;
-  await api('/notas/' + notaAberta.id, 'DELETE'); $('#j-nota').close(); avisar('Nota excluída.'); await carregarNotas(); desenharNotas();
+  try { await api('/notas/' + notaAberta.id, 'DELETE'); } catch (e) { return avisar(e.message, true); }
+  $('#j-nota').close(); avisar('Nota excluída.'); await carregarNotas(); desenharNotas();
 };
 
 // ── janelas, entrada e saída ──
