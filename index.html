@@ -324,14 +324,14 @@
   .legenda { display: flex; gap: 16px; font-size: 13px; color: var(--suave); margin-top: 8px; }
   .legenda i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; }
   .notas-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-  .nota { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; text-align: left; color: inherit; background: var(--papel); border: 1px solid var(--linha); border-top: 4px solid var(--linha); border-radius: 12px; cursor: pointer; }
-  .nota:hover { border-color: var(--azul); }
-  .nota.importante { border-top-color: #e0a100; background: #fffbef; }
-  .nota.feita { opacity: .6; }
-  .nota.feita h3 { text-decoration: line-through; }
-  .nota h3 { margin: 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
-  .nota p { margin: 0; font-size: 14px; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-  .nota footer { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--suave); }
+  .notas-grade .nota { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 14px 16px; font-size: 14px; text-align: left; color: inherit; background: var(--papel); border: 1px solid var(--linha); border-top: 4px solid var(--linha); border-radius: 12px; cursor: pointer; }
+  .notas-grade .nota:hover { border-color: var(--azul); }
+  .notas-grade .nota.importante { border-top-color: #e0a100; background: #fffbef; }
+  .notas-grade .nota.feita { opacity: .6; }
+  .notas-grade .nota.feita h3 { text-decoration: line-through; }
+  .notas-grade .nota h3 { margin: 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+  .notas-grade .nota p { margin: 0; font-size: 14px; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .notas-grade .nota footer { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--suave); }
   .chip { padding: 2px 8px; font-weight: 700; background: var(--gelo); border-radius: 999px; }
   .chip.vencido { color: #fff; background: var(--urgente); }
   .chip.futuro { color: var(--andamento); background: var(--andamento-bg); }
@@ -456,6 +456,8 @@
   /* ── estoque ── */
   .placar.tres { grid-template-columns: repeat(3, 1fr) !important; }
   .placar.tres b { font-stretch: 100%; }
+  .placar.tres .rotulo { letter-spacing: .04em; }
+  @media (max-width: 420px) { .placar.tres > div { padding: 12px; } .placar.tres .rotulo { font-size: 11px; } }
   .status.ok { color: var(--realizado); background: var(--realizado-bg); }
   .status.baixo { color: var(--prioritario); background: var(--prioritario-bg); }
   .status.zerado { color: #fff; background: var(--urgente); }
@@ -464,6 +466,8 @@
   .item-topo { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px 22px; flex-wrap: wrap; }
   .item-topo .saldo b { font-size: 34px; }
   .item-topo .botoes { margin-left: auto; }
+  @keyframes piscar { from { background: #fef3c7; } to { background: transparent; } }
+  .tabela tr.mudou td { animation: piscar 2.2s ease-out; }
   .mov-mais { color: var(--realizado); font-weight: 700; }
   .mov-menos { color: var(--urgente); font-weight: 700; }
   .botao.os { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -579,10 +583,10 @@
 
   <!-- estoque -->
   <section id="aba-estoque" hidden>
-    <div class="titulo-sec"><h1>Estoque</h1><button class="botao cheio" id="novo-item">+ Novo item</button></div>
+    <div class="titulo-sec"><h1>Estoque de peças</h1><button class="botao cheio" id="novo-item">+ Nova peça</button></div>
     <div class="placar tres" id="estoque-placar"></div>
     <div class="busca">
-      <input id="busca-estoque" type="search" placeholder="Procurar item…">
+      <input id="busca-estoque" type="search" placeholder="Procurar peça…">
       <div class="filtros" id="filtros-estoque">
         <button data-f="" aria-pressed="true">Todos</button>
         <button data-f="repor">Para repor</button>
@@ -590,7 +594,7 @@
       </div>
     </div>
     <table class="tabela">
-      <thead><tr><th>Item</th><th class="direita">Saldo</th><th class="direita">Mínimo</th><th>Situação</th><th>Última mudança</th><th></th></tr></thead>
+      <thead><tr><th>Peça</th><th class="direita">Em estoque</th><th class="direita">Mínimo</th><th>Situação</th><th>Última mudança</th><th></th></tr></thead>
       <tbody id="estoque-lista"></tbody>
     </table>
   </section>
@@ -829,16 +833,14 @@
 
 <!-- janela: item do estoque -->
 <dialog id="j-item">
-  <div class="janela-topo"><h2 id="j-item-titulo">Novo item</h2><button data-fechar aria-label="Fechar">×</button></div>
+  <div class="janela-topo"><h2 id="j-item-titulo">Nova peça</h2><button data-fechar aria-label="Fechar">×</button></div>
   <form class="campos" id="f-item">
-    <label class="campo todo"><span>Nome do item</span><input name="nome" required placeholder="Ex.: Gás R410A, capacitor 35 µF, tubo de cobre 1/4"></label>
-    <label class="campo"><span>Unidade</span><input name="unidade" list="unidades" placeholder="un"></label>
-    <datalist id="unidades"><option value="un"><option value="kg"><option value="m"><option value="L"><option value="cx"><option value="pç"><option value="rolo"><option value="par"></datalist>
-    <label class="campo"><span>Avisar quando chegar em</span><input name="minimo" inputmode="decimal" placeholder="0"></label>
-    <label class="campo" id="f-item-inicial"><span>Quanto tem agora</span><input name="saldo" inputmode="decimal" placeholder="0"></label>
+    <label class="campo todo"><span>Nome da peça</span><input name="nome" required placeholder="Ex.: capacitor 35 µF, placa eletrônica, controle remoto"></label>
+    <label class="campo"><span>Avisar quando chegar em</span><input name="minimo" inputmode="numeric" placeholder="0"></label>
+    <label class="campo" id="f-item-inicial"><span>Quantas tem agora</span><input name="saldo" inputmode="numeric" placeholder="0"></label>
     <p class="erro" hidden></p>
     <div class="rodape-form">
-      <button type="button" class="botao perigo" id="f-item-ativo" hidden>Desativar item</button>
+      <button type="button" class="botao perigo" id="f-item-ativo" hidden>Desativar peça</button>
       <button type="button" class="botao" data-fechar>Cancelar</button><button class="botao cheio">Salvar</button>
     </div>
   </form>
@@ -854,7 +856,7 @@
         <label><input type="radio" name="tipo" value="contagem"><span>Contagem</span></label>
       </div>
     </div>
-    <label class="campo"><span id="f-mov-rotulo">Quantidade</span><input name="qtd" inputmode="decimal" required></label>
+    <label class="campo"><span id="f-mov-rotulo">Quantidade</span><input name="qtd" inputmode="numeric" required></label>
     <p class="campo miudo" id="f-mov-agora" style="align-self:end;margin:0 0 10px"></p>
     <label class="campo todo"><span>Motivo <small>(opcional)</small></span><input name="motivo" maxlength="200" id="f-mov-motivo"></label>
     <p class="erro" hidden></p>
@@ -880,7 +882,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v2';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v3';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -978,10 +980,11 @@
     nota({ titulo: 'Renovar o seguro da Strada', categoria: 'Administrativo', lembrete: agoraLocal(24 * 5).slice(0, 11) + '09:00' });
     d.clientes.find(c => c.id === mare.cliente_id).documento = '12.345.678/0001-90';
     // estoque de exemplo: entrada inicial e algumas saídas para serviços
-    for (const [nome, unidade, minimo, saldo, saidas] of [['Gás R410A', 'kg', 5, 13.6, [[2.5, 'Hotel Ilha Bela']]], ['Gás R32', 'kg', 3, 2, []],
-      ['Capacitor 35 uF', 'un', 4, 10, [[1, 'Pousada Canto Verde']]], ['Tubo de cobre 1/4', 'm', 10, 15, [[6, 'Instalação Maria Helena']]],
-      ['Fita PVC branca', 'rolo', 5, 0, []], ['Suporte para condensadora', 'par', 2, 6, []]]) {
-      const p = { id: id(), nome, unidade, minimo, ativo: true, criado_em: agora() }; d.produtos.push(p);
+    for (const [nome, minimo, saldo, saidas] of [['Capacitor 35 uF', 4, 10, [[1, 'Pousada Canto Verde']]], ['Capacitor 45 uF', 4, 3, []],
+      ['Controle remoto universal', 3, 8, [[1, 'Venda Restaurante Maré Alta']]], ['Placa eletrônica split 9.000 BTUs', 1, 2, []],
+      ['Sensor de temperatura', 5, 12, [[2, 'Hotel Ilha Bela']]], ['Motor ventilador da condensadora', 1, 0, []],
+      ['Compressor 12.000 BTUs', 1, 1, []], ['Suporte para condensadora (par)', 2, 6, []]]) {
+      const p = { id: id(), nome, minimo, ativo: true, criado_em: agora() }; d.produtos.push(p);
       if (saldo) d.movimentos.push({ id: id(), produto_id: p.id, qtd: saldo, tipo: 'entrada', motivo: 'Quantidade inicial', por: 'Alice', em: agora() });
       for (const [q, motivo] of saidas) d.movimentos.push({ id: id(), produto_id: p.id, qtd: -q, tipo: 'saida', motivo, por: 'Alice', em: agora() });
     }
@@ -1247,18 +1250,19 @@
   });
 
   // estoque: saldo = soma dos movimentos
-  const saldoDe = pid => Math.round(db.movimentos.filter(m => m.produto_id === pid).reduce((t, m) => t + m.qtd * 1000, 0)) / 1000;
+  const saldoDe = pid => db.movimentos.filter(m => m.produto_id === pid).reduce((t, m) => t + m.qtd, 0);
   const produtoJson = p => { const ms = db.movimentos.filter(m => m.produto_id === p.id); return { ...p, saldo: saldoDe(p.id), ultimo: ms.length ? ms.map(m => m.em).sort().pop() : null }; };
   const produtoDe = id => { const p = db.produtos.find(x => x.id === +id); if (!p) throw new Erro(404, 'Não encontrado.'); return p; };
   const qtd = (v, rotulo = 'a quantidade', zero = false) => {
-    const n = Math.round(Number(String(v ?? '').replace(',', '.').trim() || 'x') * 1000) / 1000;
-    if (isNaN(n)) invalido(`Confira ${rotulo}: use só números.`);
+    const n = Number(String(v ?? '').trim() || 'x');
+    if (!Number.isInteger(n)) invalido(`Confira ${rotulo}: use só números inteiros (quantas peças).`);
     if (n < 0 || (n === 0 && !zero)) invalido(zero ? `Confira ${rotulo}: não pode ser negativa.` : `Confira ${rotulo}: precisa ser maior que zero.`);
     return n;
   };
   const movimentar = (pid, q, tipo, motivo) => db.movimentos.push({ id: novoId(), produto_id: pid, qtd: q, tipo, motivo: motivo || null, por: eu.nome, em: agora() });
-  const dadosProduto = d => ({ nome: txt(d, 'nome', 'o nome do item').slice(0, 80), unidade: (txt(d, 'unidade') || 'un').slice(0, 12), minimo: qtd(d.minimo || 0, 'o estoque mínimo', true) });
+  const dadosProduto = d => ({ nome: txt(d, 'nome', 'o nome da peça').slice(0, 80), minimo: qtd(d.minimo || 0, 'o estoque mínimo', true) });
   const nomeRepetido = (nome, id) => db.produtos.some(p => p.nome.toLowerCase() === nome.toLowerCase() && p.id !== id);
+  rota('GET', 'estoque/versao', () => { admin(); return { v: JSON.stringify([db.produtos, db.movimentos.length, db.movimentos.reduce((t, m) => t + m.qtd, 0)]) }; });
   rota('GET', 'estoque', () => { admin(); return db.produtos.map(produtoJson).sort((a, b) => a.nome.localeCompare(b.nome)); });
   rota('POST', 'estoque', d => {
     admin(); const p = dadosProduto(d); if (nomeRepetido(p.nome)) invalido('Já existe um item com esse nome.');
@@ -1279,19 +1283,19 @@
   rota('POST', 'estoque/:id/movimento', (d, q, id) => {
     admin(); const p = produtoDe(id), saldo = saldoDe(p.id);
     if (d.tipo === 'contagem') {
-      const dif = Math.round((qtd(d.qtd, 'a quantidade contada', true) - saldo) * 1000) / 1000;
+      const dif = qtd(d.qtd, 'a quantidade contada', true) - saldo;
       if (!dif) invalido('A contagem bate com o sistema: nada a ajustar.');
       movimentar(p.id, dif, 'ajuste', txt(d, 'motivo') || 'Contagem do estoque');
     } else if (d.tipo === 'entrada' || d.tipo === 'saida') {
       const n = qtd(d.qtd);
-      if (d.tipo === 'saida' && n > saldo + 1e-9) invalido(`Só tem ${String(saldo).replace('.', ',')} ${p.unidade} no estoque. Se a conta estiver errada, use "Contagem" para acertar.`);
+      if (d.tipo === 'saida' && n > saldo) invalido(`Só tem ${saldo} no estoque. Se a conta estiver errada, use "Contagem" para acertar.`);
       movimentar(p.id, d.tipo === 'entrada' ? n : -n, d.tipo, txt(d, 'motivo'));
     } else invalido('Escolha entrada, saída ou contagem.');
     return produtoJson(p);
   });
   rota('DELETE', 'movimentos/:id', (d, q, id) => {
     admin(); const m = db.movimentos.find(x => x.id === +id); if (!m) throw new Erro(404, 'Não encontrado.');
-    if (saldoDe(m.produto_id) - m.qtd < -1e-9) invalido('Apagar este lançamento deixaria o saldo negativo. Apague primeiro as saídas mais novas.');
+    if (saldoDe(m.produto_id) - m.qtd < 0) invalido('Apagar este lançamento deixaria o saldo negativo. Apague primeiro as saídas mais novas.');
     db.movimentos = db.movimentos.filter(x => x.id !== m.id);
     return produtoJson(produtoDe(m.produto_id));
   });
@@ -2381,7 +2385,7 @@ async function carregarDre() {
     <div class="barra-acoes"><span class="total"><b>DRE de ${nomeMes(mesFin)}</b> · entra o que foi recebido, sai o que foi gasto no mês</span>
       <button class="botao pequeno no-print" onclick="print()">Imprimir ou salvar PDF</button></div>
     <table class="dre">
-      <thead><tr><td></td><th scope="col">${curto(mesFin)}</th><th scope="col" class="pct">% da receita</th>
+      <thead><tr><th scope="col"></th><th scope="col">${curto(mesFin)}</th><th scope="col" class="pct">% da receita</th>
         <th scope="col" class="ant">${curto(somarMes(mesFin, -1))}</th><th scope="col">Ano ${mesFin.slice(0, 4)}</th></tr></thead>
       <tbody>
         ${linha('Receita bruta', x => x.receita, 'grupo')}
@@ -2405,7 +2409,7 @@ async function carregarDre() {
 
 // ── estoque ──
 let itens = [], filtroEstoque = '', itemAberto = null;
-const qtdBr = n => (+n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+const pecas = n => `${n} peça${Math.abs(n) === 1 ? '' : 's'}`;
 const situacao = i => !i.ativo ? ['inativo', 'Inativo'] : i.saldo <= 0 ? ['zerado', 'Zerado'] : i.saldo <= i.minimo ? ['baixo', 'Repor'] : ['ok', 'OK'];
 const repor = i => ['zerado', 'baixo'].includes(situacao(i)[0]);
 async function carregarEstoque() {
@@ -2417,24 +2421,40 @@ async function carregarEstoque() {
 }
 function desenharEstoque() {
   const ativos = itens.filter(i => i.ativo), baixos = ativos.filter(i => situacao(i)[0] === 'baixo').length, zerados = ativos.filter(i => i.saldo <= 0).length;
-  $('#estoque-placar').innerHTML = [['Itens ativos', ativos.length, ''], ['Abaixo do mínimo', baixos, baixos ? 'alerta' : 'verde'], ['Zerados', zerados, zerados ? 'negativo' : 'verde']]
+  $('#estoque-placar').innerHTML = [['Peças', ativos.length, ''], ['Abaixo do mínimo', baixos, baixos ? 'alerta' : 'verde'], ['Zeradas', zerados, zerados ? 'negativo' : 'verde']]
     .map(([t, v, c]) => `<div class="${c}"><p class="rotulo">${t}</p><b class="num">${v}</b></div>`).join('');
   $$('#filtros-estoque button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === filtroEstoque));
   const q = $('#busca-estoque').value.trim().toLowerCase();
   const lista = itens.filter(i => (filtroEstoque === 'inativo' ? !i.ativo : i.ativo && (filtroEstoque !== 'repor' || repor(i))) && (!q || i.nome.toLowerCase().includes(q)))
     .sort((x, y) => repor(y) - repor(x) || x.nome.localeCompare(y.nome));
-  $('#estoque-lista').innerHTML = lista.length ? lista.map(i => { const [cls, nome] = situacao(i); return `<tr>
+  $('#estoque-lista').innerHTML = lista.length ? lista.map(i => { const [cls, nome] = situacao(i), mudou = i.id in saldosVistos && saldosVistos[i.id] !== i.saldo; return `<tr${mudou ? ' class="mudou"' : ''}>
     <td class="todo-m"><button class="link" data-item="${i.id}"><b>${esc(i.nome)}</b></button></td>
-    <td class="direita saldo num"><b>${qtdBr(i.saldo)}</b> ${esc(i.unidade)}</td>
-    <td class="direita num miudo">${i.minimo ? 'mín. ' + qtdBr(i.minimo) : '<span class="so-pc">Sem mínimo</span>'}</td>
+    <td class="direita saldo num"><b>${i.saldo}</b> <span class="miudo">${i.saldo === 1 ? 'peça' : 'peças'}</span></td>
+    <td class="direita num miudo">${i.minimo ? 'mín. ' + i.minimo : '<span class="so-pc">Sem mínimo</span>'}</td>
     <td><span class="status ${cls}">${nome}</span></td>
     <td class="miudo">${i.ultimo ? dataBr(i.ultimo) : 'Sem lançamentos'}</td>
     <td class="direita">${i.ativo ? `<button class="botao pequeno" data-mov="entrada:${i.id}">Entrada</button> <button class="botao pequeno" data-mov="saida:${i.id}">Saída</button>` : `<button class="botao pequeno" data-item="${i.id}">Ver</button>`}</td></tr>`; }).join('')
-    : `<tr><td colspan="6" class="miudo" style="padding:26px;text-align:center">${itens.length ? 'Nenhum item aqui. Mude o filtro ou a busca.' : 'Nenhum item ainda. Use “+ Novo item” para cadastrar gás, peças e materiais.'}</td></tr>`;
+    : `<tr><td colspan="6" class="miudo" style="padding:26px;text-align:center">${itens.length ? 'Nenhuma peça aqui. Mude o filtro ou a busca.' : 'Nenhuma peça ainda. Use “+ Nova peça” para cadastrar.'}</td></tr>`;
+  saldosVistos = Object.fromEntries(itens.map(i => [i.id, i.saldo]));
   $$('#estoque-lista [data-item]').forEach(b => b.onclick = () => abrirItem(+b.dataset.item));
   $$('#estoque-lista [data-mov]').forEach(b => { const [t, id] = b.dataset.mov.split(':'); b.onclick = () => abrirMov(itens.find(i => i.id === +id), t); });
 }
 $('#busca-estoque').oninput = () => desenharEstoque();
+
+// tempo real, como no controle de estoque do dono: a cada 2 s pergunta ao servidor se o estoque mudou em algum aparelho
+// (resposta curtinha); só quando mudou baixa a lista de novo e redesenha, sem recarregar a página. A linha que mudou pisca.
+let versaoEstoque = '', saldosVistos = {};
+setInterval(async () => {
+  if (!admin() || document.hidden) return;
+  try {
+    const { v } = await api('/estoque/versao');
+    if (v === versaoEstoque) return;
+    versaoEstoque = v;
+    await carregarEstoque();  // atualiza o número de "para repor" na aba, mesmo em outra tela
+    if (!$('#aba-estoque').hidden) desenharEstoque();
+    if ($('#j-estoque').open && itemAberto) abrirItem(itemAberto.id);
+  } catch (e) { /* sem internet agora: tenta de novo em 2 s */ }
+}, 2000);
 $$('#filtros-estoque button').forEach(b => b.onclick = () => { filtroEstoque = b.dataset.f; desenharEstoque(); });
 
 let itemEditando = null;
@@ -2442,27 +2462,27 @@ function abrirCadastroItem(i = null) {
   itemEditando = i;
   const f = $('#f-item');
   f.reset(); $('.erro', f).hidden = true;
-  $('#j-item-titulo').textContent = i ? 'Editar ' + i.nome : 'Novo item';
+  $('#j-item-titulo').textContent = i ? 'Editar ' + i.nome : 'Nova peça';
   $('#f-item-inicial').hidden = !!i;
   $('#f-item-ativo').hidden = !i;
-  if (i) { f.nome.value = i.nome; f.unidade.value = i.unidade; f.minimo.value = i.minimo ? qtdBr(i.minimo) : ''; $('#f-item-ativo').textContent = i.ativo ? 'Desativar item' : 'Reativar item'; }
+  if (i) { f.nome.value = i.nome; f.minimo.value = i.minimo || ''; $('#f-item-ativo').textContent = i.ativo ? 'Desativar peça' : 'Reativar peça'; }
   $('#j-item').showModal();
   f.nome.focus();
 }
 $('#novo-item').onclick = () => abrirCadastroItem();
 $('#f-item').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target, dados = { nome: f.nome.value, unidade: f.unidade.value, minimo: f.minimo.value, saldo: f.saldo.value };
+  const f = e.target, dados = { nome: f.nome.value, minimo: f.minimo.value, saldo: f.saldo.value };
   try {
     await api(itemEditando ? '/estoque/' + itemEditando.id : '/estoque', itemEditando ? 'PUT' : 'POST', dados);
-    $('#j-item').close(); avisar('Item salvo.'); await atualizarEstoque();
+    $('#j-item').close(); avisar('Peça salva.'); await atualizarEstoque();
   } catch (x) { $('.erro', f).textContent = x.message; $('.erro', f).hidden = false; }
 };
 $('#f-item-ativo').onclick = async () => {
   const ativar = !itemEditando.ativo;
-  if (!ativar && !confirm(`Desativar ${itemEditando.nome}? Ele sai da lista e dos avisos, mas o histórico fica guardado.`)) return;
+  if (!ativar && !confirm(`Desativar ${itemEditando.nome}? Ela sai da lista e dos avisos, mas o histórico fica guardado.`)) return;
   await api('/estoque/' + itemEditando.id, 'PUT', { ativo: ativar });
-  $('#j-item').close(); avisar(ativar ? 'Item reativado.' : 'Item desativado.'); await atualizarEstoque();
+  $('#j-item').close(); avisar(ativar ? 'Peça reativada.' : 'Peça desativada.'); await atualizarEstoque();
 };
 async function atualizarEstoque() {
   await carregarEstoque(); desenharEstoque();
@@ -2471,13 +2491,13 @@ async function atualizarEstoque() {
 
 let movItem = null;
 const TEXTO_MOV = {
-  entrada: ['Quantidade que chegou', 'Ex.: compra na loja, Mercado Livre'],
-  saida: ['Quantidade que saiu', 'Ex.: serviço na casa da Ana, perda'],
-  contagem: ['Quanto tem de fato agora', 'Ex.: contagem do fim do mês'],
+  entrada: ['Quantas chegaram', 'Ex.: compra na loja, Mercado Livre'],
+  saida: ['Quantas saíram', 'Ex.: venda, serviço na casa da Ana, defeito'],
+  contagem: ['Quantas tem de fato agora', 'Ex.: contagem do fim do mês'],
 };
 function ajustarMov() {
   const t = $('#f-mov').tipo.value;
-  $('#f-mov-rotulo').textContent = TEXTO_MOV[t][0] + ` (${movItem.unidade})`;
+  $('#f-mov-rotulo').textContent = TEXTO_MOV[t][0];
   $('#f-mov-motivo').placeholder = TEXTO_MOV[t][1];
 }
 function abrirMov(i, tipo = 'entrada') {
@@ -2486,7 +2506,7 @@ function abrirMov(i, tipo = 'entrada') {
   f.reset(); $('.erro', f).hidden = true;
   f.tipo.value = tipo;
   $('#j-mov-titulo').textContent = i.nome;
-  $('#f-mov-agora').textContent = `No sistema agora: ${qtdBr(i.saldo)} ${i.unidade}`;
+  $('#f-mov-agora').textContent = `No sistema agora: ${pecas(i.saldo)}`;
   ajustarMov();
   $('#j-mov').showModal();
   f.qtd.focus();
@@ -2498,7 +2518,7 @@ $('#f-mov').onsubmit = async e => {
   botao.disabled = true;
   try {
     const r = await api(`/estoque/${movItem.id}/movimento`, 'POST', { tipo: f.tipo.value, qtd: f.qtd.value, motivo: f.motivo.value });
-    $('#j-mov').close(); avisar(`${movItem.nome}: agora ${qtdBr(r.saldo)} ${r.unidade}.`); await atualizarEstoque();
+    $('#j-mov').close(); avisar(`${movItem.nome}: agora ${pecas(r.saldo)}.`); await atualizarEstoque();
   } catch (x) { $('.erro', f).textContent = x.message; $('.erro', f).hidden = false; }
   botao.disabled = false;
 };
@@ -2508,14 +2528,14 @@ async function abrirItem(id) {
   const r = await api('/estoque/' + id), i = r.produto, [cls, nome] = situacao(i);
   itemAberto = i;
   $('#j-estoque-nome').textContent = i.nome;
-  $('#j-estoque-topo').innerHTML = `<div class="saldo"><p class="rotulo">Saldo</p><b class="num">${qtdBr(i.saldo)}</b> ${esc(i.unidade)}</div>
-    <div><span class="status ${cls}">${nome}</span><div class="miudo" style="margin-top:4px">${i.minimo ? `Avisa quando chegar em ${qtdBr(i.minimo)} ${esc(i.unidade)}` : 'Sem estoque mínimo'}</div></div>
+  $('#j-estoque-topo').innerHTML = `<div class="saldo"><p class="rotulo">Em estoque</p><b class="num">${i.saldo}</b> ${i.saldo === 1 ? 'peça' : 'peças'}</div>
+    <div><span class="status ${cls}">${nome}</span><div class="miudo" style="margin-top:4px">${i.minimo ? `Avisa quando chegar em ${pecas(i.minimo)}` : 'Sem estoque mínimo'}</div></div>
     <div class="botoes">${i.ativo ? `<button class="botao pequeno" data-m="entrada">Entrada</button><button class="botao pequeno" data-m="saida">Saída</button>
       <button class="botao pequeno" data-m="contagem">Contagem</button>` : ''}<button class="botao pequeno" data-editar-item>Editar</button></div>`;
   $('#j-estoque-lista').innerHTML = r.movimentos.length ? r.movimentos.map(m => `<tr>
     <td class="num">${dataBr(m.em)}<div class="miudo">${m.em.slice(11, 16)} · ${esc(m.por)}</div></td>
     <td>${NOME_MOV[m.tipo]}</td>
-    <td class="direita num ${m.qtd > 0 ? 'mov-mais' : 'mov-menos'}">${m.qtd > 0 ? '+' : '-'}${qtdBr(Math.abs(m.qtd))} ${esc(i.unidade)}</td>
+    <td class="direita num ${m.qtd > 0 ? 'mov-mais' : 'mov-menos'}">${m.qtd > 0 ? '+' : '-'}${pecas(Math.abs(m.qtd))}</td>
     <td class="todo-m miudo">${esc(m.motivo || '')}</td>
     <td class="direita"><button class="botao pequeno" data-apagar-mov="${m.id}">Apagar</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="miudo" style="padding:26px;text-align:center">Nenhum lançamento ainda.</td></tr>';
