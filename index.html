@@ -2649,9 +2649,7 @@ async function abrirItem(id) {
 }
 
 // ── ordem de serviço em PDF (feita no próprio aparelho: funciona igual no celular e no computador) ──
-const EMPRESA = { nome: 'Everest Refrigeração', cnpj: '59.089.897/0001-14' };
-const OS_ASSINATURAS = true;  // a Everest ainda vai decidir se a ordem leva assinaturas; false tira (as observações ocupam o espaço)
-let jsPdf = null;
+const EMPRESA = { nome: 'Everest Refrigeração', cnpj: '59.089.897/0001-14' };let jsPdf = null;
 function carregarJsPdf() {
   return jsPdf ||= new Promise((ok, falha) => {
     const sc = Object.assign(document.createElement('script'), {
@@ -2749,28 +2747,13 @@ async function gerarOS(s, botao) {
     doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M + L * 0.5, y + 6.2);
     y += 16;
 
-    // assinaturas: o cliente e o responsável da Everest (quem emitiu a ordem)
-    const assinam = OS_ASSINATURAS ? [['Assinatura do cliente', s.cliente], ['Responsável · ' + EMPRESA.nome, eu.nome]] : [];
-    const altAss = assinam.length ? 22 : 0;
-
-    // linhas em branco para escrever à mão no atendimento (o que foi encontrado, peças trocadas, recomendações)
+    // linhas em branco para anotar no atendimento (o que foi encontrado, peças trocadas, recomendações); sem assinaturas (decisão da Everest)
     secao('Observações');
     precisa(26);
     doc.setDrawColor(...LINHA); doc.setLineWidth(0.3);
-    const nLinhas = Math.max(3, Math.min(8, Math.floor((FIM - altAss - 16 - y) / 8)));  // ocupa o espaço que sobra antes das assinaturas
+    const nLinhas = Math.max(3, Math.min(8, Math.floor((FIM - 16 - y) / 8)));  // ocupa o espaço que sobra na página
     for (let i = 0; i < nLinhas; i++) doc.line(M, y + 4 + i * 8, W - M, y + 4 + i * 8);
     y += nLinhas * 8 + 6;
-
-    // assinaturas no pé da página (ou na próxima, se não couber)
-    if (assinam.length) { precisa(altAss); y = Math.max(y + 6, FIM - altAss + 8); }
-    doc.setDrawColor(...TINTA); doc.setLineWidth(0.3);
-    const wa = L / 2 - 8;
-    assinam.forEach(([rotulo, nome], i) => {
-      const x = i % 2 ? W - M - wa : M, ya = y + Math.floor(i / 2) * 22;
-      doc.line(x, ya, x + wa, ya);
-      texto(TINTA, 9, 'bold'); doc.text(rotulo, x, ya + 5);
-      if (nome) { texto(SUAVE, 8.5); doc.text(doc.splitTextToSize(nome, wa)[0], x, ya + 9.5); }
-    });
 
     // rodapé em todas as páginas
     const paginas = doc.getNumberOfPages();
