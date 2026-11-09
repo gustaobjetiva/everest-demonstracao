@@ -187,6 +187,13 @@
   /* ── janelas ── */
   dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow: auto; overscroll-behavior: contain; padding: 0; color: var(--tinta); background: var(--papel); border: 0; border-radius: 18px; box-shadow: 0 30px 80px rgba(8, 38, 63, .35); }
   #j-cliente, dialog.larga { width: min(860px, calc(100vw - 24px)); }
+  .linhas-pecas { display: grid; gap: 8px; }
+  .linha-peca { display: grid; grid-template-columns: 1fr 76px 40px; gap: 8px; align-items: center; }
+  .linha-peca select, .linha-peca input { width: 100%; min-width: 0; padding: 10px; background: var(--papel); border: 1px solid var(--linha); border-radius: 10px; }
+  .linha-peca input { text-align: center; }
+  .linha-peca button { width: 40px; height: 40px; padding: 0; color: var(--urgente); font-size: 20px; background: none; border: 1px solid var(--linha); border-radius: 10px; cursor: pointer; }
+  .linhas-pecas > .botao { justify-self: start; }
+  .pecas-card { margin: 8px 0 0; font-size: 14px; color: var(--suave); }
   .fotos-prontas { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
   .fotos-prontas:empty { display: none; }
   .fotos-prontas span { position: relative; }
@@ -594,7 +601,7 @@
       </div>
     </div>
     <table class="tabela">
-      <thead><tr><th>Peça</th><th class="direita">Em estoque</th><th class="direita">Mínimo</th><th>Situação</th><th>Última mudança</th><th></th></tr></thead>
+      <thead><tr><th>Peça</th><th class="direita">Em estoque</th><th class="direita">Preço</th><th class="direita">Mínimo</th><th>Situação</th><th>Última mudança</th><th></th></tr></thead>
       <tbody id="estoque-lista"></tbody>
     </table>
   </section>
@@ -649,6 +656,8 @@
     <label class="campo todo"><span>O que será feito</span><textarea name="descricao" required></textarea></label>
     <label class="campo"><span>Valor a cobrar (R$)</span><input name="valor" inputmode="decimal" placeholder="0,00"></label>
     <div class="campo todo"><span>Quem vai</span><div class="escolha" id="f-equipe"></div></div>
+    <div class="campo todo"><span>Peças e equipamentos <small>(o funcionário marca ao finalizar; aqui dá para corrigir)</small></span>
+      <div class="linhas-pecas" id="f-servico-pecas"></div><span class="miudo" id="f-servico-total"></span></div>
     <div class="campo todo"><span>Status</span>
       <div class="escolha">
         <label><input type="radio" name="status" value="pendente" checked><span>Pendente</span></label>
@@ -775,6 +784,10 @@
       </div>
       <span class="miudo">Só a Alice e o Israel veem as fotos.</span>
     </div>
+    <div class="campo todo"><span>Peças e equipamentos usados no conserto</span>
+      <div class="linhas-pecas" id="f-finalizar-pecas"></div>
+      <span class="miudo">Saem do estoque ao finalizar. Não usou nenhuma? Deixe sem peças.</span>
+    </div>
     <p class="erro" hidden></p>
     <div class="rodape-form"><button type="button" class="botao" data-fechar>Cancelar</button><button class="botao verde" id="f-finalizar-ok" disabled>Finalizar e enviar</button></div>
   </form>
@@ -838,6 +851,7 @@
   <div class="janela-topo"><h2 id="j-item-titulo">Nova peça</h2><button data-fechar aria-label="Fechar">×</button></div>
   <form class="campos" id="f-item">
     <label class="campo todo"><span>Nome da peça</span><input name="nome" required placeholder="Ex.: capacitor 35 µF, placa eletrônica, controle remoto"></label>
+    <label class="campo"><span>Preço de venda (R$)</span><input name="preco" inputmode="decimal" placeholder="0,00"></label>
     <label class="campo"><span>Avisar quando chegar em</span><input name="minimo" inputmode="numeric" placeholder="0"></label>
     <label class="campo" id="f-item-inicial"><span>Quantas tem agora</span><input name="saldo" inputmode="numeric" placeholder="0"></label>
     <p class="erro" hidden></p>
@@ -884,7 +898,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v5';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v6';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -940,7 +954,7 @@
     };
     const serv = (n, hora, nome, tel, end, desc, valor, prioridade, equipe, status, fixo) => {
       const s = { id: id(), cliente_id: cliente(nome, tel, end, fixo), data: dia(n), hora: hora || null, endereco: end, descricao: desc,
-        valor, prioridade, status: 'pendente', equipe, fotos: [], pago: false, pago_em: null, forma: null, criado_em: agora(), alterado_em: agora(),
+        valor, prioridade, status: 'pendente', equipe, fotos: [], pecas: [], pago: false, pago_em: null, forma: null, criado_em: agora(), alterado_em: agora(),
         status_antes: null, status_por: null, status_por_id: null, status_em: null, realizado_em: null };
       d.servicos.push(s);
       if (status !== 'pendente') Object.assign(s, { status, status_antes: 'pendente', status_por: 'Alice', status_por_id: 1, status_em: agora(), realizado_em: status === 'realizado' ? dia(n) : null });
@@ -983,14 +997,22 @@
     nota({ titulo: 'Renovar o seguro da Strada', categoria: 'Administrativo', lembrete: agoraLocal(24 * 5).slice(0, 11) + '09:00' });
     d.clientes.find(c => c.id === mare.cliente_id).documento = '12.345.678/0001-90';
     // estoque de exemplo: entrada inicial e algumas saídas para serviços
-    for (const [nome, minimo, saldo, saidas] of [['Capacitor 35 uF', 4, 10, [[1, 'Pousada Canto Verde']]], ['Capacitor 45 uF', 4, 3, []],
-      ['Controle remoto universal', 3, 8, [[1, 'Venda Restaurante Maré Alta']]], ['Placa eletrônica split 9.000 BTUs', 1, 2, []],
-      ['Sensor de temperatura', 5, 12, [[2, 'Hotel Ilha Bela']]], ['Motor ventilador da condensadora', 1, 0, []],
-      ['Compressor 12.000 BTUs', 1, 1, []], ['Suporte para condensadora (par)', 2, 6, []]]) {
-      const p = { id: id(), nome, minimo, ativo: true, criado_em: agora() }; d.produtos.push(p);
+    const pecaId = {};
+    for (const [nome, minimo, saldo, saidas, preco] of [['Capacitor 35 uF', 4, 10, [[1, 'Pousada Canto Verde']], 45], ['Capacitor 45 uF', 4, 3, [], 55],
+      ['Controle remoto universal', 3, 8, [[1, 'Venda Restaurante Maré Alta']], 85], ['Placa eletrônica split 9.000 BTUs', 1, 2, [], 320],
+      ['Sensor de temperatura', 5, 12, [[2, 'Hotel Ilha Bela']], 38], ['Motor ventilador da condensadora', 1, 0, [], 260],
+      ['Compressor 12.000 BTUs', 1, 1, [], 1450], ['Suporte para condensadora (par)', 2, 6, [], 70]]) {
+      const p = { id: id(), nome, minimo, preco, ativo: true, criado_em: agora() }; d.produtos.push(p); pecaId[nome] = p.id;
       if (saldo) d.movimentos.push({ id: id(), produto_id: p.id, qtd: saldo, tipo: 'entrada', motivo: 'Quantidade inicial', por: 'Alice', em: agora() });
       for (const [q, motivo] of saidas) d.movimentos.push({ id: id(), produto_id: p.id, qtd: -q, tipo: 'saida', motivo, por: 'Alice', em: agora() });
     }
+    // serviço finalizado pelo João com as peças que usou (saíram do estoque e somam no valor)
+    const acai = serv(0, '16:00', 'Açaí da Praia', '(24) 99321-7788', 'Praia do Abraão, quiosque 4', 'Split do balcão não liga.', 180, 'normal', [3], 'pendente');
+    Object.assign(acai, { status: 'realizado', status_antes: 'pendente', status_por: 'João', status_por_id: 3, status_em: agora(), realizado_em: hoje(),
+      fotos: [{ id: id(), url: fotoExemplo('#d8e9f5'), por: 'João', em: agora() }],
+      pecas: [{ produto_id: pecaId['Capacitor 35 uF'], qtd: 1, preco: 45 }, { produto_id: pecaId['Sensor de temperatura'], qtd: 1, preco: 38 }] });
+    acai.pecas.forEach(p => d.movimentos.push({ id: id(), produto_id: p.produto_id, qtd: -p.qtd, tipo: 'saida', servico_id: acai.id,
+      motivo: `Serviço ${acai.criado_em.slice(0, 4)}-${String(acai.id).padStart(5, '0')} · Açaí da Praia`, por: 'João', em: agora() }));
     nota({ texto: 'Clínica Sorriso: os 3 aparelhos são de 2015. Sugerir troca por inverter no orçamento.', categoria: 'Serviços', por: 'Israel' });
     return d;
   }
@@ -1015,9 +1037,13 @@
   const sj = s => {
     const c = clienteDe(s);
     const r = { ...s, cliente: c.nome, telefone: c.telefone, documento: c.documento || null, protocolo: `${s.criado_em.slice(0, 4)}-${String(s.id).padStart(5, '0')}`, equipe: s.equipe.map(i => ({ id: i, nome: nomeDe(i) })), desfazer_ate: desfazerAte(s), fotos: s.fotos.map(f => f.id) };
-    if (eu.papel !== 'admin') ['valor', 'pago', 'pago_em', 'forma', 'fotos'].forEach(k => delete r[k]);
+    const pecas = (s.pecas || []).map(p => ({ produto_id: p.produto_id, nome: (db.produtos.find(x => x.id === p.produto_id) || {}).nome, qtd: p.qtd, preco: p.preco }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    if (eu.papel !== 'admin') { ['valor', 'pago', 'pago_em', 'forma', 'fotos'].forEach(k => delete r[k]); r.pecas = pecas.map(({ preco, ...p }) => p); }
+    else { r.pecas = pecas; r.total = Math.round(cent(s.valor) + cent(valorPecas(s))) / 100; }
     return r;
   };
+  const valorPecas = s => Math.round((s.pecas || []).reduce((t, p) => t + p.qtd * cent(p.preco), 0)) / 100;
   const meus = s => eu.papel === 'admin' || s.equipe.includes(eu.id);
   const ordem = (a, b) => a.data.localeCompare(b.data) || (a.hora || '99').localeCompare(b.hora || '99') || a.id - b.id;
   const um = id => { const s = db.servicos.find(x => x.id === +id); if (!s || !meus(s)) throw new Erro(404, 'Não encontrado.'); return s; };
@@ -1046,7 +1072,7 @@
       valor: reais(d.valor), prioridade: d.prioridade || 'normal', equipe: (d.equipe || []).map(Number) };
   };
   const recebiveis = () => [
-    ...db.servicos.filter(s => s.status === 'realizado').map(s => ({ id: s.id, tipo: 'servico', cliente: clienteDe(s).nome, descricao: s.descricao, data: s.realizado_em, valor: s.valor, pago: s.pago, pago_em: s.pago_em, forma: s.forma })),
+    ...db.servicos.filter(s => s.status === 'realizado').map(s => ({ id: s.id, tipo: 'servico', cliente: clienteDe(s).nome, descricao: s.descricao, data: s.realizado_em, valor: Math.round(cent(s.valor) + cent(valorPecas(s))) / 100, pago: s.pago, pago_em: s.pago_em, forma: s.forma })),
     ...db.vendas.map(v => ({ id: v.id, tipo: 'venda', cliente: v.cliente, descricao: v.descricao, data: v.data, valor: v.valor, pago: v.pago, pago_em: v.pago_em, forma: v.forma })),
   ];
   const soma = l => Math.round(l.reduce((t, x) => t + cent(x.valor), 0)) / 100;
@@ -1096,18 +1122,21 @@
     admin();
     const s = { id: novoId(), ...dadosServico(d), cliente_id: acharCliente(d), status: 'pendente', fotos: [], pago: false, pago_em: null, forma: null,
       status_antes: null, status_por: null, status_por_id: null, status_em: null, realizado_em: null, criado_em: agora(), alterado_em: agora() };
-    db.servicos.push(s);
+    const gravar = prepararPecas(s, lerPecas(d.pecas));
+    db.servicos.push(s); gravar();
     if (d.status && d.status !== 'pendente') mudarStatus(s, d.status);
     avisoSimulado(s, 'Novo serviço para você');
     return sj(s);
   });
   rota('PUT', 'servicos/:id', (d, q, id) => {
     admin(); const s = um(id), novo = dadosServico(d);
-    if (novo.valor !== s.valor) {
-      if (s.pago) invalido('Esse serviço já está pago. Para mudar o valor, desmarque o pagamento no Financeiro antes.');
+    const alvo = 'pecas' in d ? lerPecas(d.pecas) : null, mudouPecas = alvo && !mesmasPecas(alvo, pecasAtuais(s));
+    if (novo.valor !== s.valor || mudouPecas) {
+      if (s.pago) invalido('Esse serviço já está pago. Para mudar o valor ou as peças, desmarque o pagamento no Financeiro antes.');
       travarMes(s.realizado_em);
     }
     if (d.status && d.status !== s.status && s.pago) invalido('Esse serviço já está pago. Desmarque o pagamento no Financeiro antes de reabrir.');
+    if (mudouPecas) prepararPecas(s, alvo, db.movimentos.some(m => m.servico_id === s.id) ? ' (corrigido)' : '')();
     Object.assign(s, novo, { cliente_id: acharCliente(d), alterado_em: agora() });
     if (d.status) mudarStatus(s, d.status);
     avisoSimulado(s, 'Serviço alterado');
@@ -1117,6 +1146,7 @@
     admin(); const s = um(id);
     if (s.pago) invalido('Esse serviço já está pago e conta no financeiro. Para excluir, desmarque o pagamento antes.');
     travarMes(s.realizado_em);
+    prepararPecas(s, {}, ' (excluído)')();  // as peças voltam ao estoque
     db.servicos = db.servicos.filter(x => x.id !== s.id);
   });
   rota('POST', 'servicos/:id/status', (d, q, id) => {
@@ -1129,7 +1159,8 @@
     if (s.status === 'realizado') invalido('Esse serviço já foi finalizado.');
     const fotos = d instanceof FormData ? d.getAll('foto') : [];
     if (!fotos.length) invalido('Tire pelo menos uma foto do serviço pronto.');
-    mudarStatus(s, 'realizado');
+    const gravar = prepararPecas(s, lerPecas(d.get('pecas')));  // confere o estoque antes de mexer em qualquer coisa
+    mudarStatus(s, 'realizado'); gravar();
     for (const f of fotos.slice(0, 10)) s.fotos.push({ id: novoId(), url: await lerArquivo(f), por: eu.nome, em: agora() });
     return sj(s);
   });
@@ -1137,7 +1168,9 @@
     const s = um(id);
     if (eu.papel !== 'admin' && !desfazerAte(s)) invalido('Já passaram 10 minutos da finalização. Peça para a Alice ou o Israel reabrir.');
     s.fotos = s.fotos.filter(f => f.em < s.status_em);
-    mudarStatus(s, ['pendente', 'andamento'].includes(s.status_antes) ? s.status_antes : 'pendente'); return sj(s);
+    mudarStatus(s, ['pendente', 'andamento'].includes(s.status_antes) ? s.status_antes : 'pendente');
+    if ((s.pecas || []).length) prepararPecas(s, {}, ' (finalização desfeita)')();  // as peças voltam ao estoque
+    return sj(s);
   });
   rota('POST', 'servicos/:id/pagamento', (d, q, id) => {
     admin(); const s = um(id); if (s.status !== 'realizado') invalido('Só dá para receber de um serviço finalizado.'); pagar(s, d);
@@ -1195,25 +1228,53 @@
       forma: d.forma || null, pago: !!d.pago, pago_em: d.pago ? (d.pago_em || d.data) : null, produto_id: pid, qtd: pid ? qtd(d.qtd || 1, 'quantas peças foram vendidas') : null };
   };
   // a peça vendida sai do estoque. Nada é apagado: editar lança só a diferença, excluir devolve com uma entrada (igual ao app.py)
+  // deixa no estoque o efeito `alvo` ({peça: quantas saíram}) desta venda/serviço: confere tudo e devolve a função que lança a diferença
+  const acertarEstoque = (campo, ref, alvo, motivo) => {
+    const atual = {}, lancar = [];
+    db.movimentos.filter(m => m[campo] === ref).forEach(m => atual[m.produto_id] = (atual[m.produto_id] || 0) - m.qtd);
+    for (const pid of new Set([...Object.keys(alvo), ...Object.keys(atual)].map(Number))) {
+      const dif = (alvo[pid] || 0) - (atual[pid] || 0); if (!dif) continue;
+      const peca = produtoDe(pid), saldo = saldoDe(pid);
+      if (dif > 0 && !peca.ativo && !atual[pid]) invalido(`${peca.nome} está desativada no estoque.`);
+      if (dif > 0 && saldo < dif) invalido(`Só tem ${saldo + (atual[pid] || 0)} de ${peca.nome} no estoque.`);
+      lancar.push([pid, dif, saldo]);
+    }
+    return () => lancar.forEach(([pid, dif, saldo]) => {
+      db.movimentos.push({ id: novoId(), produto_id: pid, qtd: -dif, tipo: dif > 0 ? 'saida' : 'entrada', [campo]: ref, desfaz: null, por: eu.nome, em: agora(), motivo });
+      avisoEstoque(pid, saldo);
+    });
+  };
   const baixarVenda = (vid, v, excluir = false) => {
     const p = !excluir && v.produto_id && db.produtos.find(x => x.id === v.produto_id);
     if (!excluir && v.produto_id && !p) invalido('Essa peça não existe no estoque.');
     if (p) v.descricao = v.descricao || p.nome;
-    const alvo = p ? { [p.id]: -v.qtd } : {}, atual = {};
-    db.movimentos.filter(m => m.venda_id === vid).forEach(m => atual[m.produto_id] = (atual[m.produto_id] || 0) + m.qtd);
-    const jaTinha = db.movimentos.some(m => m.venda_id === vid), lancar = [];
-    for (const pid of new Set([...Object.keys(alvo), ...Object.keys(atual)].map(Number))) {
-      const dif = (alvo[pid] || 0) - (atual[pid] || 0); if (!dif) continue;
-      const peca = produtoDe(pid), saldo = saldoDe(pid);
-      if (dif < 0 && pid in alvo && !peca.ativo && !atual[pid]) invalido('Essa peça está desativada no estoque.');
-      if (dif < 0 && saldo + dif < 0) invalido(`Só tem ${saldo - (atual[pid] || 0)} de ${peca.nome} no estoque.`);
-      lancar.push([pid, dif, saldo]);
+    const jaTinha = db.movimentos.some(m => m.venda_id === vid);
+    acertarEstoque('venda_id', vid, p ? { [p.id]: v.qtd } : {}, `Venda para ${v.cliente}${excluir ? ' (excluída)' : jaTinha ? ' (alterada)' : ''}`)();
+  };
+  // peças do serviço: [{produto_id, qtd}] → {peça: quantidade}
+  const lerPecas = lista => {
+    if (typeof lista === 'string') { try { lista = JSON.parse(lista || '[]'); } catch (e) { invalido('Confira as peças usadas.'); } }
+    if (!Array.isArray(lista || [])) invalido('Confira as peças usadas.');
+    const alvo = {};
+    for (const item of lista || []) {
+      const pid = +((item || {}).produto_id);
+      if (!pid) invalido('Escolha a peça em cada linha (ou tire a linha vazia).');
+      if (!db.produtos.some(p => p.id === pid)) invalido('Uma das peças não existe no estoque.');
+      alvo[pid] = (alvo[pid] || 0) + qtd(item.qtd || 1, 'quantas peças foram usadas');
     }
-    for (const [pid, dif, saldo] of lancar) {  // só mexe depois de conferir tudo
-      db.movimentos.push({ id: novoId(), produto_id: pid, qtd: dif, tipo: dif < 0 ? 'saida' : 'entrada', venda_id: vid, desfaz: null, por: eu.nome, em: agora(),
-        motivo: `Venda para ${v.cliente}${excluir ? ' (excluída)' : jaTinha ? ' (alterada)' : ''}` });
-      avisoEstoque(pid, saldo);
-    }
+    return alvo;
+  };
+  const pecasAtuais = s => Object.fromEntries((s.pecas || []).map(p => [p.produto_id, p.qtd]));
+  const mesmasPecas = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+  const protocoloDe = s => `${s.criado_em.slice(0, 4)}-${String(s.id).padStart(5, '0')}`;
+  // confere o estoque e devolve a função que grava as peças (a que já estava mantém o preço de quando foi usada)
+  const prepararPecas = (s, alvo, quando = '') => {
+    const lancar = acertarEstoque('servico_id', s.id, alvo, `Serviço ${protocoloDe(s)} · ${clienteDe(s).nome}${quando}`);
+    return () => {
+      lancar();
+      s.pecas = Object.entries(alvo).map(([pid, q]) => ({ produto_id: +pid, qtd: q,
+        preco: ((s.pecas || []).find(p => p.produto_id === +pid) || db.produtos.find(p => p.id === +pid)).preco }));
+    };
   };
   const vendaDe = id => { const v = db.vendas.find(x => x.id === +id); if (!v) throw new Erro(404, 'Não encontrado.'); return v; };
   rota('POST', 'vendas', d => { admin(); const v = { id: novoId(), ...venda(d), criado_em: agora() }; travarMes(v.data, v.pago_em); baixarVenda(v.id, v); db.vendas.push(v); return { id: v.id }; });
@@ -1297,9 +1358,10 @@
     const r = recebiveis().filter(x => x.pago && x.pago_em >= de && x.pago_em <= ate), desp = db.despesas.filter(x => x.data >= de && x.data <= ate);
     const despesas = {};
     desp.forEach(x => despesas[x.categoria] = Math.round(cent((despesas[x.categoria] || 0) + x.valor)) / 100);
-    const servicos = soma(r.filter(x => x.tipo === 'servico')), vendas = soma(r.filter(x => x.tipo === 'venda')), total = soma(desp);
-    return { servicos, vendas, receita: Math.round(cent(servicos) + cent(vendas)) / 100, despesas, total_despesas: total,
-      lucro: Math.round(cent(servicos) + cent(vendas) - cent(total)) / 100 };
+    const pecas = Math.round(db.servicos.filter(s => s.pago && s.pago_em >= de && s.pago_em <= ate).reduce((t, s) => t + cent(valorPecas(s)), 0)) / 100;
+    const servicos = Math.round(cent(soma(r.filter(x => x.tipo === 'servico'))) - cent(pecas)) / 100, vendas = soma(r.filter(x => x.tipo === 'venda')), total = soma(desp);
+    const receita = Math.round(cent(servicos) + cent(pecas) + cent(vendas)) / 100;
+    return { servicos, pecas, vendas, receita, despesas, total_despesas: total, lucro: Math.round(cent(receita) - cent(total)) / 100 };
   };
   const fimDoMes = m => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7), 0); return iso(d); };
   rota('GET', 'dre', (d, q) => {
@@ -1327,7 +1389,8 @@
       `${p.nome} · ${depois > 0 ? 'restam ' + depois : 'nenhuma peça'}`), 500);
   };
   const movimentar = (pid, q, tipo, motivo) => db.movimentos.push({ id: novoId(), produto_id: pid, qtd: q, tipo, motivo: motivo || null, por: eu.nome, em: agora() });
-  const dadosProduto = d => ({ nome: txt(d, 'nome', 'o nome da peça').slice(0, 80), minimo: qtd(d.minimo || 0, 'o estoque mínimo', true) });
+  const dadosProduto = d => ({ nome: txt(d, 'nome', 'o nome da peça').slice(0, 80), minimo: qtd(d.minimo || 0, 'o estoque mínimo', true), preco: reais(d.preco, 'o preço de venda') });
+  rota('GET', 'pecas', () => db.produtos.filter(p => p.ativo).sort((a, b) => a.nome.localeCompare(b.nome)).map(p => ({ id: p.id, nome: p.nome, saldo: saldoDe(p.id) })));
   const nomeRepetido = (nome, id) => db.produtos.some(p => p.nome.toLowerCase() === nome.toLowerCase() && p.id !== id);
   rota('GET', 'estoque/versao', () => { admin(); return { v: JSON.stringify([db.produtos, db.movimentos.length, db.movimentos.reduce((t, m) => t + m.qtd, 0)]) }; });
   rota('GET', 'estoque', () => { admin(); return db.produtos.map(produtoJson).sort((a, b) => a.nome.localeCompare(b.nome)); });
@@ -1365,6 +1428,7 @@
   rota('POST', 'movimentos/:id/desfazer', (d, q, id) => {
     admin(); const m = db.movimentos.find(x => x.id === +id); if (!m) throw new Erro(404, 'Não encontrado.');
     if (m.venda_id) invalido('Este lançamento é de uma venda. Para desfazer, edite ou exclua a venda no Financeiro.');
+    if (m.servico_id) invalido('Este lançamento é das peças de um serviço. Para corrigir, edite as peças do serviço na Agenda.');
     if (m.desfaz) invalido('Este lançamento já é uma correção. Se precisar, lance uma entrada ou saída.');
     if (db.movimentos.some(x => x.desfaz === m.id)) invalido('Este lançamento já foi desfeito.');
     const saldo = saldoDe(m.produto_id);
@@ -1689,7 +1753,7 @@ function desenharAgenda() {
       (urg ? `<span style="color:var(--urgente)"><b>${urg}</b> urgente${urg > 1 ? 's' : ''}</span>` : '') +
       `<span><b>${conta('pendente')}</b> pendente${conta('pendente') !== 1 ? 's' : ''}</span>` +
       `<span><b>${conta('andamento')}</b> em andamento</span><span><b>${conta('realizado')}</b> realizado${conta('realizado') !== 1 ? 's' : ''}</span>` +
-      `<span>Total do dia: <b>${reais(doDia.reduce((t, s) => t + s.valor, 0))}</b></span>`
+      `<span>Total do dia: <b>${reais(doDia.reduce((t, s) => t + s.total, 0))}</b></span>`
     : `<span>Você tem <b>${doDia.length}</b> serviço${doDia.length > 1 ? 's' : ''} neste dia</span>` +
       (conta('realizado') ? `<span><b>${conta('realizado')}</b> já finalizado${conta('realizado') > 1 ? 's' : ''}</span>` : ''));
 
@@ -1707,7 +1771,7 @@ function cartao(s) {
   const tag = s.prioridade !== 'normal' ? `<span class="tag ${s.prioridade}">${s.prioridade === 'urgente' ? 'URGENTE' : 'PRIORITÁRIO'}</span>` : '';
   const pessoas = s.equipe.length ? s.equipe.map(p => `<span class="pessoa">${esc(p.nome)}</span>`).join('') : '<span class="pessoa falta">Sem responsável</span>';
   const nota = [
-    admin() ? `<b>${reais(s.valor)}</b>` : '',
+    admin() ? `<b>${reais(s.total)}</b>${s.pecas.length ? ` (serviço ${reais(s.valor)} + peças ${reais(s.total - s.valor)})` : ''}` : '',
     s.status_por ? `${NOME_STATUS[s.status]} por ${esc(s.status_por)} às ${s.status_em.slice(11, 16)}${s.status_em.slice(0, 10) !== s.data ? ' de ' + dataBr(s.status_em) : ''}` : '',
     admin() ? botaoFotos(s) : '',
   ].filter(Boolean).join(' · ');
@@ -1736,6 +1800,7 @@ function cartao(s) {
         ${zap ? `<a href="https://wa.me/${zap}" target="_blank" rel="noopener">${ICONE.zap}WhatsApp</a>` : ''}
       </p>
       <div class="pessoas">${pessoas}</div>
+      ${s.pecas && s.pecas.length ? `<p class="pecas-card">Peças: ${s.pecas.map(p => `${p.qtd}× ${esc(p.nome)}`).join(', ')}</p>` : ''}
       ${nota ? `<p class="nota">${nota}</p>` : ''}
     </div>
     <div class="card-acoes">${acoes}</div>
@@ -1770,6 +1835,13 @@ document.addEventListener('visibilitychange', () => { if (eu && !document.hidden
 
 // ── janela do serviço ──
 let editando = null;
+let pecasServico = [], pecasServicoAntes = '[]';
+function totalServico() {  // serviço + peças (peça que já estava no serviço vale o preço de quando foi usada)
+  const f = $('#f-servico'), precoDe = pid => ((editando && editando.pecas) || []).find(p => p.produto_id === pid)?.preco ?? (itens.find(i => i.id === pid) || {}).preco ?? 0;
+  const pecas = pecasEscolhidas(pecasServico).reduce((t, p) => t + precoDe(p.produto_id) * (parseInt(p.qtd) || 0), 0);
+  $('#f-servico-total').textContent = pecas ? `Peças: ${reais(pecas)} · total com o serviço: ${reais(reaisDigitado(f.valor.value) + pecas)}` : '';
+}
+$('#f-servico').valor.addEventListener('input', totalServico);
 async function abrirServico(s = null, reagendar = false) {
   editando = s;
   await Promise.all([carregarEquipe(), carregarClientes()]);
@@ -1783,6 +1855,11 @@ async function abrirServico(s = null, reagendar = false) {
   $('#f-equipe').innerHTML = ativos.length ? ativos.map(p =>
     `<label><input type="checkbox" name="equipe" value="${p.id}"><span>${esc(p.nome)}</span></label>`).join('')
     : '<span class="miudo">Cadastre os funcionários na aba Equipe.</span>';
+  await carregarEstoque();
+  pecasServico = ((s && s.pecas) || []).map(p => ({ produto_id: p.produto_id, qtd: p.qtd }));
+  pecasServicoAntes = JSON.stringify(pecasEscolhidas(pecasServico));
+  const opcoes = comAsDoServico(itens.filter(i => i.ativo), s);
+  editorPecas($('#f-servico-pecas'), pecasServico, opcoes, totalServico);
   if (s) {
     Object.entries({ data: s.data, hora: s.hora || '', cliente: s.cliente, telefone: s.telefone || '', documento: s.documento || '', endereco: s.endereco || '',
       descricao: s.descricao, valor: s.valor ? s.valor.toFixed(2).replace('.', ',') : '' }).forEach(([k, v]) => f[k].value = v);
@@ -1792,6 +1869,7 @@ async function abrirServico(s = null, reagendar = false) {
     f.data.value = dia;
   }
   $('#f-fixo').hidden = !!s && clientes.some(c => c.id === s.cliente_id);
+  totalServico();
   $('#j-servico').showModal();
   (reagendar ? f.data : s ? f.descricao : f.hora).focus();
 }
@@ -1816,6 +1894,8 @@ $('#f-servico').onsubmit = async e => {
   dados.equipe = $$('[name="equipe"]:checked', f).map(c => +c.value);
   dados.fixo = !$('#f-fixo').hidden && f.fixo.checked;
   if (editando && dados.status === editando.status) delete dados.status;
+  const pecas = pecasEscolhidas(pecasServico);
+  if (JSON.stringify(pecas) !== pecasServicoAntes) dados.pecas = pecas;  // só manda se mudou (não desfaz o que o funcionário marcou)
   botao.disabled = true; erro.hidden = true;
   try {
     const s = await api(editando ? `/servicos/${editando.id}` : '/servicos', editando ? 'PUT' : 'POST', dados);
@@ -1853,7 +1933,7 @@ $$('#filtros button').forEach(b => b.onclick = () => {
 
 async function buscar() {
   const r = await api(`/busca?q=${encodeURIComponent($('#busca').value.trim())}&status=${filtro}`);
-  const total = r.servicos.reduce((t, s) => t + s.valor, 0);
+  const total = r.servicos.reduce((t, s) => t + s.total, 0);
   $('#busca-contagem').textContent = r.servicos.length
     ? `${r.servicos.length}${r.servicos.length === 200 ? '+' : ''} atendimento${r.servicos.length > 1 ? 's' : ''} · ${reais(total)}` : '';
   $('#busca-lista').innerHTML = r.servicos.length ? r.servicos.map(s => linhaHistorico(s)).join('')
@@ -1876,8 +1956,28 @@ async function encolher(arquivo) {
     return await new Promise(ok => tela.toBlob(b => ok(b || arquivo), 'image/jpeg', .85));
   } catch (e) { return arquivo; }  // não deu para diminuir aqui: o servidor diminui
 }
-function abrirFinalizar(s) {
+// linhas "peça + quantidade" usadas no finalizar (funcionário) e no editar serviço (admin)
+function editorPecas(caixa, linhas, opcoes, aoMudar = () => {}) {
+  caixa.innerHTML = linhas.map((l, i) => `<div class="linha-peca" data-i="${i}">
+      <select data-campo="produto_id" aria-label="Peça ${i + 1}"><option value="">Escolha a peça…</option>${opcoes.map(o =>
+        `<option value="${o.id}"${+l.produto_id === o.id ? ' selected' : ''}>${esc(o.nome)} · ${o.saldo} em estoque</option>`).join('')}</select>
+      <input data-campo="qtd" inputmode="numeric" value="${esc(l.qtd)}" aria-label="Quantidade da peça ${i + 1}">
+      <button type="button" data-tirar-peca aria-label="Tirar peça ${i + 1}">×</button></div>`).join('') +
+    `<button type="button" class="botao pequeno" data-mais-peca>+ Adicionar peça</button>`;
+  $$('[data-campo]', caixa).forEach(c => c.oninput = c.onchange = () => { linhas[+c.closest('[data-i]').dataset.i][c.dataset.campo] = c.value; aoMudar(); });
+  $$('[data-tirar-peca]', caixa).forEach(b => b.onclick = () => { linhas.splice(+b.closest('[data-i]').dataset.i, 1); editorPecas(caixa, linhas, opcoes, aoMudar); aoMudar(); });
+  $('[data-mais-peca]', caixa).onclick = () => { linhas.push({ produto_id: '', qtd: 1 }); editorPecas(caixa, linhas, opcoes, aoMudar); $$('select', caixa).pop().focus(); };
+}
+const pecasEscolhidas = linhas => linhas.filter(l => l.produto_id).map(l => ({ produto_id: +l.produto_id, qtd: String(l.qtd).trim() || 1 }));
+// as peças que o serviço já tem continuam na lista, mesmo desativadas no estoque
+const comAsDoServico = (opcoes, s) => [...opcoes, ...((s && s.pecas) || []).filter(p => !opcoes.some(o => o.id === p.produto_id)).map(p => ({ id: p.produto_id, nome: p.nome, saldo: 0 }))];
+
+let pecasFinalizar = [];
+async function abrirFinalizar(s) {
   finalizando = s; fotosEscolhidas = [];
+  pecasFinalizar = (s.pecas || []).map(p => ({ produto_id: p.produto_id, qtd: p.qtd }));
+  const opcoes = await api('/pecas').catch(() => []);
+  editorPecas($('#f-finalizar-pecas'), pecasFinalizar, comAsDoServico(opcoes, s));
   const f = $('#f-finalizar');
   $('#f-finalizar-o-que').innerHTML = `<span><b>${esc(s.cliente)}</b></span><span class="miudo">${esc(s.descricao)}</span>`;
   $('.erro', f).hidden = true;
@@ -1901,11 +2001,12 @@ $('#f-finalizar').onsubmit = async e => {
   const f = e.target, botao = $('#f-finalizar-ok'), erro = $('.erro', f);
   const corpo = new FormData();
   fotosEscolhidas.forEach((b, i) => corpo.append('foto', b, `servico-${finalizando.id}-${i + 1}.jpg`));
+  corpo.append('pecas', JSON.stringify(pecasEscolhidas(pecasFinalizar)));
   botao.disabled = true; botao.textContent = 'Enviando…'; erro.hidden = true;
   try {
     const r = await fetch(`api/servicos/${finalizando.id}/finalizar`, { method: 'POST', body: corpo, headers: { 'X-Everest': '1' }, credentials: 'same-origin' });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || 'Não consegui enviar. Confira a internet e tente de novo.');
-    $('#j-finalizar').close(); avisar('Serviço finalizado. Foto enviada.'); await carregarSemana();
+    $('#j-finalizar').close(); avisar('Serviço finalizado.'); await carregarSemana();
   } catch (x) { erro.textContent = x.message; erro.hidden = false; }
   botao.disabled = !fotosEscolhidas.length; botao.textContent = 'Finalizar e enviar';
 };
@@ -1929,7 +2030,7 @@ function linhaHistorico(s, semCliente = false) {
     <td class="todo-m">${s.prioridade === 'urgente' ? '<span class="tag urgente">URGENTE</span> ' : ''}${esc(s.descricao)}<div class="miudo">${esc(s.endereco || '')}</div></td>
     <td class="todo-m miudo">${s.equipe.map(p => esc(p.nome)).join(', ') || 'Ninguém escalado'}</td>
     <td><span class="status ${s.status}">${NOME_STATUS[s.status]}</span>${s.realizado_em ? `<div class="miudo">em ${dataBr(s.realizado_em)}</div>` : ''}${s.fotos && s.fotos.length ? `<div class="miudo">${botaoFotos(s)}</div>` : ''}</td>
-    <td class="direita num">${reais(s.valor)}<div><button class="link miudo" data-os="${s.id}">Ordem de serviço</button></div></td>
+    <td class="direita num">${reais(s.total)}${s.pecas.length ? `<div class="miudo">com ${reais(s.total - s.valor)} em peças</div>` : ''}<div><button class="link miudo" data-os="${s.id}">Ordem de serviço</button></div></td>
   </tr>`;
 }
 const ligarOS = (onde, lista) => $$('[data-os]', onde).forEach(b => b.onclick = () => gerarOS(lista.find(s => s.id === +b.dataset.os), b));
@@ -1943,7 +2044,7 @@ async function abrirCliente(id) {
     c.documento ? `<span>CPF/CNPJ ${esc(c.documento)}</span>` : '',
     `<span class="miudo">Cliente desde ${dataBr(c.criado_em)}</span>`].join('');
   const feitos = r.servicos.filter(s => s.status === 'realizado');
-  $('#j-cliente-qt').textContent = `${r.servicos.length} atendimento${r.servicos.length !== 1 ? 's' : ''} · ${feitos.length} realizado${feitos.length !== 1 ? 's' : ''} · ${reais(feitos.reduce((t, s) => t + s.valor, 0))} em serviços feitos`;
+  $('#j-cliente-qt').textContent = `${r.servicos.length} atendimento${r.servicos.length !== 1 ? 's' : ''} · ${feitos.length} realizado${feitos.length !== 1 ? 's' : ''} · ${reais(feitos.reduce((t, s) => t + s.total, 0))} em serviços feitos`;
   $('#j-cliente-lista').innerHTML = r.servicos.map(s => linhaHistorico(s, true)).join('');
   ligarOS($('#j-cliente-lista'), r.servicos);
   $('#j-cliente').showModal();
@@ -2130,6 +2231,7 @@ async function abrirVenda(v = null) {
   if (v) { f.cliente.value = v.cliente; f.descricao.value = v.descricao; f.valor.value = valorBr(v.valor); f.forma.value = v.forma || ''; f.pago.checked = v.pago; }
   await carregarEstoque();
   // peça escolhida sai do estoque sozinha ao salvar (editar refaz a saída, excluir a venda devolve a peça)
+  valorSugerido = '';
   const pecasVenda = itens.filter(i => i.ativo || (v && v.produto_id === i.id));
   $('#f-venda-peca').innerHTML = '<option value="">Nenhuma (não mexe no estoque)</option>' +
     pecasVenda.map(i => `<option value="${i.id}">${esc(i.nome)} · ${pecas(i.saldo)}</option>`).join('');
@@ -2139,13 +2241,18 @@ async function abrirVenda(v = null) {
   $('#j-venda').showModal();
   f.cliente.focus();
 }
+let valorSugerido = '';
 function ajustarVenda() {
   const f = $('#f-venda'), peca = itens.find(i => i.id === +f.produto_id.value);
+  if (peca && peca.preco && (!f.valor.value || f.valor.value === valorSugerido)) {
+    valorSugerido = valorBr(peca.preco * (parseInt(f.qtd.value) || 1)); f.valor.value = valorSugerido;
+  }
   $('#f-venda-qtd').hidden = !peca;
   f.descricao.required = !peca;
   f.descricao.placeholder = peca ? peca.nome : '';
 }
 $('#f-venda-peca').onchange = ajustarVenda;
+$('#f-venda').qtd.addEventListener('input', ajustarVenda);
 $('#f-venda').onsubmit = async e => {
   e.preventDefault();
   const f = e.target, botao = $('button.cheio', f);
@@ -2490,6 +2597,7 @@ async function carregarDre() {
       <tbody>
         ${linha('Receita bruta', x => x.receita, 'grupo')}
         ${linha('Serviços recebidos', x => x.servicos, 'item')}
+        ${linha('Peças usadas nos serviços', x => x.pecas, 'item')}
         ${linha('Vendas recebidas', x => x.vendas, 'item')}
         ${linha('Despesas', x => -x.total_despesas, 'grupo')}
         ${cats.length ? cats.map(c => linha(esc(c), x => -(x.despesas[c] || 0), 'item')).join('') : `<tr class="item"><th scope="row">Nenhuma despesa lançada</th><td></td><td class="pct"></td><td class="ant"></td><td></td></tr>`}
@@ -2530,11 +2638,12 @@ function desenharEstoque() {
   $('#estoque-lista').innerHTML = lista.length ? lista.map(i => { const [cls, nome] = situacao(i), mudou = i.id in saldosVistos && saldosVistos[i.id] !== i.saldo; return `<tr${mudou ? ' class="mudou"' : ''}>
     <td class="todo-m"><button class="link" data-item="${i.id}"><b>${esc(i.nome)}</b></button></td>
     <td class="direita saldo num"><b>${i.saldo}</b> <span class="miudo">${i.saldo === 1 ? 'peça' : 'peças'}</span></td>
+    <td class="direita num">${i.preco ? reais(i.preco) : '<span class="miudo">Sem preço</span>'}</td>
     <td class="direita num miudo">${i.minimo ? 'mín. ' + i.minimo : '<span class="so-pc">Sem mínimo</span>'}</td>
     <td><span class="status ${cls}">${nome}</span></td>
     <td class="miudo">${i.ultimo ? dataBr(i.ultimo) : 'Sem lançamentos'}</td>
     <td class="direita">${i.ativo ? `<button class="botao pequeno" data-mov="entrada:${i.id}">Entrada</button> <button class="botao pequeno" data-mov="saida:${i.id}">Saída</button>` : `<button class="botao pequeno" data-item="${i.id}">Ver</button>`}</td></tr>`; }).join('')
-    : `<tr><td colspan="6" class="miudo" style="padding:26px;text-align:center">${itens.length ? 'Nenhuma peça aqui. Mude o filtro ou a busca.' : 'Nenhuma peça ainda. Use “+ Nova peça” para cadastrar.'}</td></tr>`;
+    : `<tr><td colspan="7" class="miudo" style="padding:26px;text-align:center">${itens.length ? 'Nenhuma peça aqui. Mude o filtro ou a busca.' : 'Nenhuma peça ainda. Use “+ Nova peça” para cadastrar.'}</td></tr>`;
   saldosVistos = Object.fromEntries(itens.map(i => [i.id, i.saldo]));
   $$('#estoque-lista [data-item]').forEach(b => b.onclick = () => abrirItem(+b.dataset.item));
   $$('#estoque-lista [data-mov]').forEach(b => { const [t, id] = b.dataset.mov.split(':'); b.onclick = () => abrirMov(itens.find(i => i.id === +id), t); });
@@ -2565,14 +2674,14 @@ function abrirCadastroItem(i = null) {
   $('#j-item-titulo').textContent = i ? 'Editar ' + i.nome : 'Nova peça';
   $('#f-item-inicial').hidden = !!i;
   $('#f-item-ativo').hidden = !i;
-  if (i) { f.nome.value = i.nome; f.minimo.value = i.minimo || ''; $('#f-item-ativo').textContent = i.ativo ? 'Desativar peça' : 'Reativar peça'; }
+  if (i) { f.nome.value = i.nome; f.minimo.value = i.minimo || ''; f.preco.value = i.preco ? valorBr(i.preco) : ''; $('#f-item-ativo').textContent = i.ativo ? 'Desativar peça' : 'Reativar peça'; }
   $('#j-item').showModal();
   f.nome.focus();
 }
 $('#novo-item').onclick = () => abrirCadastroItem();
 $('#f-item').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target, dados = { nome: f.nome.value, minimo: f.minimo.value, saldo: f.saldo.value };
+  const f = e.target, dados = { nome: f.nome.value, minimo: f.minimo.value, saldo: f.saldo.value, preco: f.preco.value };
   try {
     await api(itemEditando ? '/estoque/' + itemEditando.id : '/estoque', itemEditando ? 'PUT' : 'POST', dados);
     $('#j-item').close(); avisar('Peça salva.'); await atualizarEstoque();
@@ -2629,6 +2738,7 @@ async function abrirItem(id) {
   itemAberto = i;
   $('#j-estoque-nome').textContent = i.nome;
   $('#j-estoque-topo').innerHTML = `<div class="saldo"><p class="rotulo">Em estoque</p><b class="num">${i.saldo}</b> ${i.saldo === 1 ? 'peça' : 'peças'}</div>
+    <div><p class="rotulo">Preço de venda</p><b class="num">${i.preco ? reais(i.preco) : 'Sem preço'}</b></div>
     <div><span class="status ${cls}">${nome}</span><div class="miudo" style="margin-top:4px">${i.minimo ? `Avisa quando chegar em ${pecas(i.minimo)}` : 'Sem estoque mínimo'}</div></div>
     <div class="botoes">${i.ativo ? `<button class="botao pequeno" data-m="entrada">Entrada</button><button class="botao pequeno" data-m="saida">Saída</button>
       <button class="botao pequeno" data-m="contagem">Contagem</button>` : ''}<button class="botao pequeno" data-editar-item>Editar</button></div>`;
@@ -2739,21 +2849,41 @@ async function gerarOS(s, botao) {
       y += h + 6; i += cabe;
     }
 
-    secao('Valor');
-    precisa(16);
-    texto(SUAVE, 7.5); doc.text('VALOR DO SERVIÇO', M, y, { charSpace: 0.3 }); doc.text('PAGAMENTO', M + L * 0.5, y, { charSpace: 0.3 });
-    texto(TINTA, 16, 'bold'); doc.text(s.valor ? reais(s.valor) : 'A definir', M, y + 7);
-    texto(s.pago ? [18, 128, 74] : [184, 98, 0], 10.5, 'bold');
-    doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M + L * 0.5, y + 6.2);
-    y += 16;
+    // peças e equipamentos usados (o funcionário marca ao finalizar)
+    secao('Peças e equipamentos');
+    const cQtd = M + L * 0.64, cUnit = M + L * 0.82, cSub = W - M;
+    if (!s.pecas.length) {
+      texto(SUAVE, 10); doc.text(s.status === 'realizado' ? 'Nenhuma peça ou equipamento utilizado.' : 'Serão listados aqui quando o serviço for finalizado.', M, y + 1);
+      y += 10;
+    } else {
+      texto(SUAVE, 7.5);
+      doc.text('ITEM', M, y); doc.text('QTD', cQtd, y, { align: 'right' }); doc.text('VALOR UNIT.', cUnit, y, { align: 'right' }); doc.text('SUBTOTAL', cSub, y, { align: 'right' });
+      y += 6;
+      s.pecas.forEach(p => {
+        precisa(8);
+        texto(TINTA, 10.5); doc.text(doc.splitTextToSize(p.nome, L * 0.55)[0], M, y);
+        doc.text(String(p.qtd), cQtd, y, { align: 'right' }); doc.text(reais(p.preco), cUnit, y, { align: 'right' });
+        texto(TINTA, 10.5, 'bold'); doc.text(reais(p.qtd * p.preco), cSub, y, { align: 'right' });
+        doc.setDrawColor(...LINHA); doc.setLineWidth(0.2); doc.line(M, y + 2.6, W - M, y + 2.6);
+        y += 7.5;
+      });
+      y += 4;
+    }
 
-    // linhas em branco para anotar no atendimento (o que foi encontrado, peças trocadas, recomendações); sem assinaturas (decisão da Everest)
-    secao('Observações');
-    precisa(26);
-    doc.setDrawColor(...LINHA); doc.setLineWidth(0.3);
-    const nLinhas = Math.max(3, Math.min(8, Math.floor((FIM - 16 - y) / 8)));  // ocupa o espaço que sobra na página
-    for (let i = 0; i < nLinhas; i++) doc.line(M, y + 4 + i * 8, W - M, y + 4 + i * 8);
-    y += nLinhas * 8 + 6;
+    // valor por último: serviço + peças = total
+    secao('Valor');
+    precisa(30);
+    const vPecas = s.pecas.reduce((t, p) => t + p.qtd * p.preco, 0), y0 = y, xl = M + L * 0.5;
+    texto(SUAVE, 7.5); doc.text('PAGAMENTO', M, y0, { charSpace: 0.3 });
+    texto(s.pago ? [18, 128, 74] : [184, 98, 0], 10.5, 'bold');
+    doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M, y0 + 6.2);
+    let yv = y0 + 1;
+    texto(SUAVE, 10.5); doc.text('Serviço', xl, yv); doc.text(s.valor ? reais(s.valor) : 'A definir', cSub, yv, { align: 'right' });
+    if (vPecas) { yv += 6.5; doc.text('Peças e equipamentos', xl, yv); doc.text(reais(vPecas), cSub, yv, { align: 'right' }); }
+    yv += 4; doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(xl, yv, cSub, yv); yv += 8;
+    const total = s.valor + vPecas;
+    texto(TINTA, 15, 'bold'); doc.text('Total', xl, yv); doc.text(total ? reais(total) : 'A definir', cSub, yv, { align: 'right' });
+    y = yv + 8;
 
     // rodapé em todas as páginas
     const paginas = doc.getNumberOfPages();
