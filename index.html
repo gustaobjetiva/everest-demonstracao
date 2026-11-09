@@ -2935,13 +2935,10 @@ async function gerarOS(s, botao) {
       y += 4;
     }
 
-    // valor por último: serviço + peças = total
-    secao('Valor', 34);
-    const vPecas = s.pecas.reduce((t, p) => t + p.qtd * p.preco, 0), y0 = y, xl = M + L * 0.5;
-    texto(SUAVE, 7.5); doc.text('PAGAMENTO', M, y0, { charSpace: 0.3 });
-    texto(s.pago ? [18, 128, 74] : [184, 98, 0], 10.5, 'bold');
-    doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M, y0 + 6.2);
-    let yv = y0 + 1;
+    // valor por último: serviço + peças = total. Sem situação do pagamento: o cliente guarda o PDF e um "Pendente" ficaria velho
+    secao('Valor', 30);
+    const vPecas = s.pecas.reduce((t, p) => t + p.qtd * p.preco, 0), xl = M + L * 0.5;
+    let yv = y + 1;
     texto(SUAVE, 10.5); doc.text('Serviço', xl, yv); doc.text(s.valor ? reais(s.valor) : 'A definir', cSub, yv, { align: 'right' });
     if (vPecas) { yv += 6.5; doc.text('Peças', xl, yv); doc.text(reais(vPecas), cSub, yv, { align: 'right' }); }
     yv += 4; doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(xl, yv, cSub, yv); yv += 8;
