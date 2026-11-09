@@ -194,6 +194,12 @@
   .linha-peca button { width: 40px; height: 40px; padding: 0; color: var(--urgente); font-size: 20px; background: none; border: 1px solid var(--linha); border-radius: 10px; cursor: pointer; }
   .linhas-pecas > .botao { justify-self: start; }
   .pecas-card { margin: 8px 0 0; font-size: 14px; color: var(--suave); }
+  .linhas-equip { display: grid; gap: 10px; }
+  .linha-equip { display: grid; grid-template-columns: 1fr 40px; gap: 8px; padding: 12px; background: var(--gelo); border-radius: 12px; }
+  .linha-equip input, .linha-equip textarea { width: 100%; min-width: 0; padding: 10px; background: var(--papel); border: 1px solid var(--linha); border-radius: 10px; }
+  .linha-equip textarea { grid-column: 1 / -1; min-height: 92px; resize: vertical; }
+  .linha-equip button { width: 40px; height: 40px; padding: 0; color: var(--urgente); font-size: 20px; background: var(--papel); border: 1px solid var(--linha); border-radius: 10px; cursor: pointer; }
+  .linhas-equip > .botao { justify-self: start; }
   .fotos-prontas { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
   .fotos-prontas:empty { display: none; }
   .fotos-prontas span { position: relative; }
@@ -656,7 +662,9 @@
     <label class="campo todo"><span>O que será feito</span><textarea name="descricao" required></textarea></label>
     <label class="campo"><span>Valor a cobrar (R$)</span><input name="valor" inputmode="decimal" placeholder="0,00"></label>
     <div class="campo todo"><span>Quem vai</span><div class="escolha" id="f-equipe"></div></div>
-    <div class="campo todo"><span>Peças e equipamentos <small>(o funcionário marca ao finalizar; aqui dá para corrigir)</small></span>
+    <div class="campo todo"><span>Equipamentos atendidos e relatório técnico <small>(o funcionário escreve ao finalizar; aqui dá para corrigir)</small></span>
+      <div class="linhas-equip" id="f-servico-equip"></div></div>
+    <div class="campo todo"><span>Peças usadas <small>(o funcionário marca ao finalizar; aqui dá para corrigir)</small></span>
       <div class="linhas-pecas" id="f-servico-pecas"></div><span class="miudo" id="f-servico-total"></span></div>
     <div class="campo todo"><span>Status</span>
       <div class="escolha">
@@ -784,7 +792,11 @@
       </div>
       <span class="miudo">Só a Alice e o Israel veem as fotos.</span>
     </div>
-    <div class="campo todo"><span>Peças e equipamentos usados no conserto</span>
+    <div class="campo todo"><span>Equipamentos atendidos e relatório técnico</span>
+      <div class="linhas-equip" id="f-finalizar-equip"></div>
+      <span class="miudo">Um para cada máquina: o que tinha de defeito e o que foi feito. Sai no PDF para o cliente.</span>
+    </div>
+    <div class="campo todo"><span>Peças usadas no conserto</span>
       <div class="linhas-pecas" id="f-finalizar-pecas"></div>
       <span class="miudo">Saem do estoque ao finalizar. Não usou nenhuma? Deixe sem peças.</span>
     </div>
@@ -898,7 +910,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v6';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v7';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -954,7 +966,7 @@
     };
     const serv = (n, hora, nome, tel, end, desc, valor, prioridade, equipe, status, fixo) => {
       const s = { id: id(), cliente_id: cliente(nome, tel, end, fixo), data: dia(n), hora: hora || null, endereco: end, descricao: desc,
-        valor, prioridade, status: 'pendente', equipe, fotos: [], pecas: [], pago: false, pago_em: null, forma: null, criado_em: agora(), alterado_em: agora(),
+        valor, prioridade, status: 'pendente', equipe, fotos: [], pecas: [], equipamentos: [], pago: false, pago_em: null, forma: null, criado_em: agora(), alterado_em: agora(),
         status_antes: null, status_por: null, status_por_id: null, status_em: null, realizado_em: null };
       d.servicos.push(s);
       if (status !== 'pendente') Object.assign(s, { status, status_antes: 'pendente', status_por: 'Alice', status_por_id: 1, status_em: agora(), realizado_em: status === 'realizado' ? dia(n) : null });
@@ -1010,6 +1022,8 @@
     const acai = serv(0, '16:00', 'Açaí da Praia', '(24) 99321-7788', 'Praia do Abraão, quiosque 4', 'Split do balcão não liga.', 180, 'normal', [3], 'pendente');
     Object.assign(acai, { status: 'realizado', status_antes: 'pendente', status_por: 'João', status_por_id: 3, status_em: agora(), realizado_em: hoje(),
       fotos: [{ id: id(), url: fotoExemplo('#d8e9f5'), por: 'João', em: agora() }],
+      equipamentos: [{ equipamento: 'Split Midea 9.000 BTUs · balcão', relatorio: 'Aparelho não ligava. Capacitor de partida estufado e sensor de temperatura com leitura errada. Trocados os dois, limpeza do filtro e teste: gelando normal (saída a 12 °C).' },
+        { equipamento: 'Freezer horizontal · estoque', relatorio: 'Revisão preventiva: borrachas da porta em bom estado, sem vazamento. Recomendado limpar o condensador a cada 3 meses.' }],
       pecas: [{ produto_id: pecaId['Capacitor 35 uF'], qtd: 1, preco: 45 }, { produto_id: pecaId['Sensor de temperatura'], qtd: 1, preco: 38 }] });
     acai.pecas.forEach(p => d.movimentos.push({ id: id(), produto_id: p.produto_id, qtd: -p.qtd, tipo: 'saida', servico_id: acai.id,
       motivo: `Serviço ${acai.criado_em.slice(0, 4)}-${String(acai.id).padStart(5, '0')} · Açaí da Praia`, por: 'João', em: agora() }));
@@ -1036,7 +1050,7 @@
   };
   const sj = s => {
     const c = clienteDe(s);
-    const r = { ...s, cliente: c.nome, telefone: c.telefone, documento: c.documento || null, protocolo: `${s.criado_em.slice(0, 4)}-${String(s.id).padStart(5, '0')}`, equipe: s.equipe.map(i => ({ id: i, nome: nomeDe(i) })), desfazer_ate: desfazerAte(s), fotos: s.fotos.map(f => f.id) };
+    const r = { ...s, equipamentos: (s.equipamentos || []).map(e => ({ ...e })), cliente: c.nome, telefone: c.telefone, documento: c.documento || null, protocolo: `${s.criado_em.slice(0, 4)}-${String(s.id).padStart(5, '0')}`, equipe: s.equipe.map(i => ({ id: i, nome: nomeDe(i) })), desfazer_ate: desfazerAte(s), fotos: s.fotos.map(f => f.id) };
     const pecas = (s.pecas || []).map(p => ({ produto_id: p.produto_id, nome: (db.produtos.find(x => x.id === p.produto_id) || {}).nome, qtd: p.qtd, preco: p.preco }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     if (eu.papel !== 'admin') { ['valor', 'pago', 'pago_em', 'forma', 'fotos'].forEach(k => delete r[k]); r.pecas = pecas.map(({ preco, ...p }) => p); }
@@ -1123,6 +1137,7 @@
     const s = { id: novoId(), ...dadosServico(d), cliente_id: acharCliente(d), status: 'pendente', fotos: [], pago: false, pago_em: null, forma: null,
       status_antes: null, status_por: null, status_por_id: null, status_em: null, realizado_em: null, criado_em: agora(), alterado_em: agora() };
     const gravar = prepararPecas(s, lerPecas(d.pecas));
+    s.equipamentos = lerEquipamentos(d.equipamentos);
     db.servicos.push(s); gravar();
     if (d.status && d.status !== 'pendente') mudarStatus(s, d.status);
     avisoSimulado(s, 'Novo serviço para você');
@@ -1131,6 +1146,7 @@
   rota('PUT', 'servicos/:id', (d, q, id) => {
     admin(); const s = um(id), novo = dadosServico(d);
     const alvo = 'pecas' in d ? lerPecas(d.pecas) : null, mudouPecas = alvo && !mesmasPecas(alvo, pecasAtuais(s));
+    const equipamentos = 'equipamentos' in d ? lerEquipamentos(d.equipamentos) : null;
     if (novo.valor !== s.valor || mudouPecas) {
       if (s.pago) invalido('Esse serviço já está pago. Para mudar o valor ou as peças, desmarque o pagamento no Financeiro antes.');
       travarMes(s.realizado_em);
@@ -1138,6 +1154,7 @@
     if (d.status && d.status !== s.status && s.pago) invalido('Esse serviço já está pago. Desmarque o pagamento no Financeiro antes de reabrir.');
     if (mudouPecas) prepararPecas(s, alvo, db.movimentos.some(m => m.servico_id === s.id) ? ' (corrigido)' : '')();
     Object.assign(s, novo, { cliente_id: acharCliente(d), alterado_em: agora() });
+    if (equipamentos) s.equipamentos = equipamentos;
     if (d.status) mudarStatus(s, d.status);
     avisoSimulado(s, 'Serviço alterado');
     return sj(s);
@@ -1160,7 +1177,9 @@
     const fotos = d instanceof FormData ? d.getAll('foto') : [];
     if (!fotos.length) invalido('Tire pelo menos uma foto do serviço pronto.');
     const gravar = prepararPecas(s, lerPecas(d.get('pecas')));  // confere o estoque antes de mexer em qualquer coisa
+    const equipamentos = d.has('equipamentos') ? lerEquipamentos(d.get('equipamentos')) : null;
     mudarStatus(s, 'realizado'); gravar();
+    if (equipamentos) s.equipamentos = equipamentos;
     for (const f of fotos.slice(0, 10)) s.fotos.push({ id: novoId(), url: await lerArquivo(f), por: eu.nome, em: agora() });
     return sj(s);
   });
@@ -1263,6 +1282,13 @@
       alvo[pid] = (alvo[pid] || 0) + qtd(item.qtd || 1, 'quantas peças foram usadas');
     }
     return alvo;
+  };
+  const lerEquipamentos = lista => {
+    if (typeof lista === 'string') { try { lista = JSON.parse(lista || '[]'); } catch (e) { invalido('Confira os equipamentos.'); } }
+    if (!Array.isArray(lista || []) || (lista || []).some(e => !e || typeof e !== 'object')) invalido('Confira os equipamentos.');
+    return (lista || []).map(e => ({ equipamento: String(e.equipamento || '').trim(), relatorio: String(e.relatorio || '').trim() }))
+      .filter((e, i) => { if (!e.equipamento && e.relatorio) invalido(`Diga qual é o equipamento ${i + 1} (ex.: Split 12.000 BTUs da sala).`); return e.equipamento; })
+      .map(e => ({ equipamento: e.equipamento.slice(0, 120), relatorio: e.relatorio.slice(0, 4000) || null }));
   };
   const pecasAtuais = s => Object.fromEntries((s.pecas || []).map(p => [p.produto_id, p.qtd]));
   const mesmasPecas = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
@@ -1800,6 +1826,7 @@ function cartao(s) {
         ${zap ? `<a href="https://wa.me/${zap}" target="_blank" rel="noopener">${ICONE.zap}WhatsApp</a>` : ''}
       </p>
       <div class="pessoas">${pessoas}</div>
+      ${s.equipamentos && s.equipamentos.length ? `<p class="pecas-card">Equipamentos: ${s.equipamentos.map(e => esc(e.equipamento)).join(', ')}</p>` : ''}
       ${s.pecas && s.pecas.length ? `<p class="pecas-card">Peças: ${s.pecas.map(p => `${p.qtd}× ${esc(p.nome)}`).join(', ')}</p>` : ''}
       ${nota ? `<p class="nota">${nota}</p>` : ''}
     </div>
@@ -1835,7 +1862,7 @@ document.addEventListener('visibilitychange', () => { if (eu && !document.hidden
 
 // ── janela do serviço ──
 let editando = null;
-let pecasServico = [], pecasServicoAntes = '[]';
+let pecasServico = [], pecasServicoAntes = '[]', equipServico = [], equipServicoAntes = '[]';
 function totalServico() {  // serviço + peças (peça que já estava no serviço vale o preço de quando foi usada)
   const f = $('#f-servico'), precoDe = pid => ((editando && editando.pecas) || []).find(p => p.produto_id === pid)?.preco ?? (itens.find(i => i.id === pid) || {}).preco ?? 0;
   const pecas = pecasEscolhidas(pecasServico).reduce((t, p) => t + precoDe(p.produto_id) * (parseInt(p.qtd) || 0), 0);
@@ -1858,6 +1885,8 @@ async function abrirServico(s = null, reagendar = false) {
   await carregarEstoque();
   pecasServico = ((s && s.pecas) || []).map(p => ({ produto_id: p.produto_id, qtd: p.qtd }));
   pecasServicoAntes = JSON.stringify(pecasEscolhidas(pecasServico));
+  equipServico = equipDoServico(s); equipServicoAntes = JSON.stringify(equipPreenchidos(equipServico));
+  editorEquip($('#f-servico-equip'), equipServico);
   const opcoes = comAsDoServico(itens.filter(i => i.ativo), s);
   editorPecas($('#f-servico-pecas'), pecasServico, opcoes, totalServico);
   if (s) {
@@ -1896,6 +1925,8 @@ $('#f-servico').onsubmit = async e => {
   if (editando && dados.status === editando.status) delete dados.status;
   const pecas = pecasEscolhidas(pecasServico);
   if (JSON.stringify(pecas) !== pecasServicoAntes) dados.pecas = pecas;  // só manda se mudou (não desfaz o que o funcionário marcou)
+  const equip = equipPreenchidos(equipServico);
+  if (JSON.stringify(equip) !== equipServicoAntes) dados.equipamentos = equip;
   botao.disabled = true; erro.hidden = true;
   try {
     const s = await api(editando ? `/servicos/${editando.id}` : '/servicos', editando ? 'PUT' : 'POST', dados);
@@ -1968,14 +1999,30 @@ function editorPecas(caixa, linhas, opcoes, aoMudar = () => {}) {
   $$('[data-tirar-peca]', caixa).forEach(b => b.onclick = () => { linhas.splice(+b.closest('[data-i]').dataset.i, 1); editorPecas(caixa, linhas, opcoes, aoMudar); aoMudar(); });
   $('[data-mais-peca]', caixa).onclick = () => { linhas.push({ produto_id: '', qtd: 1 }); editorPecas(caixa, linhas, opcoes, aoMudar); $$('select', caixa).pop().focus(); };
 }
+// equipamentos atendidos: nome do equipamento + relatório técnico de cada um
+function editorEquip(caixa, linhas) {
+  caixa.innerHTML = linhas.map((l, i) => `<div class="linha-equip" data-i="${i}">
+      <input data-campo="equipamento" value="${esc(l.equipamento)}" placeholder="Equipamento ${i + 1} (ex.: Split Samsung 12.000 BTUs · sala)" aria-label="Equipamento ${i + 1}">
+      <button type="button" data-tirar-equip aria-label="Tirar equipamento ${i + 1}">×</button>
+      <textarea data-campo="relatorio" placeholder="Relatório técnico: defeito encontrado, o que foi feito, recomendações" aria-label="Relatório técnico do equipamento ${i + 1}">${esc(l.relatorio)}</textarea></div>`).join('') +
+    `<button type="button" class="botao pequeno" data-mais-equip>+ Adicionar equipamento</button>`;
+  $$('[data-campo]', caixa).forEach(c => c.oninput = () => linhas[+c.closest('[data-i]').dataset.i][c.dataset.campo] = c.value);
+  $$('[data-tirar-equip]', caixa).forEach(b => b.onclick = () => { linhas.splice(+b.closest('[data-i]').dataset.i, 1); editorEquip(caixa, linhas); });
+  $('[data-mais-equip]', caixa).onclick = () => { linhas.push({ equipamento: '', relatorio: '' }); editorEquip(caixa, linhas); $$('input', caixa).pop().focus(); };
+}
+const equipPreenchidos = linhas => linhas.map(l => ({ equipamento: (l.equipamento || '').trim(), relatorio: (l.relatorio || '').trim() })).filter(l => l.equipamento || l.relatorio);
+const equipDoServico = s => ((s && s.equipamentos) || []).map(e => ({ equipamento: e.equipamento, relatorio: e.relatorio || '' }));
 const pecasEscolhidas = linhas => linhas.filter(l => l.produto_id).map(l => ({ produto_id: +l.produto_id, qtd: String(l.qtd).trim() || 1 }));
 // as peças que o serviço já tem continuam na lista, mesmo desativadas no estoque
 const comAsDoServico = (opcoes, s) => [...opcoes, ...((s && s.pecas) || []).filter(p => !opcoes.some(o => o.id === p.produto_id)).map(p => ({ id: p.produto_id, nome: p.nome, saldo: 0 }))];
 
-let pecasFinalizar = [];
+let pecasFinalizar = [], equipFinalizar = [];
 async function abrirFinalizar(s) {
   finalizando = s; fotosEscolhidas = [];
   pecasFinalizar = (s.pecas || []).map(p => ({ produto_id: p.produto_id, qtd: p.qtd }));
+  equipFinalizar = equipDoServico(s);
+  if (!equipFinalizar.length) equipFinalizar.push({ equipamento: '', relatorio: '' });
+  editorEquip($('#f-finalizar-equip'), equipFinalizar);
   const opcoes = await api('/pecas').catch(() => []);
   editorPecas($('#f-finalizar-pecas'), pecasFinalizar, comAsDoServico(opcoes, s));
   const f = $('#f-finalizar');
@@ -2002,6 +2049,7 @@ $('#f-finalizar').onsubmit = async e => {
   const corpo = new FormData();
   fotosEscolhidas.forEach((b, i) => corpo.append('foto', b, `servico-${finalizando.id}-${i + 1}.jpg`));
   corpo.append('pecas', JSON.stringify(pecasEscolhidas(pecasFinalizar)));
+  corpo.append('equipamentos', JSON.stringify(equipPreenchidos(equipFinalizar)));
   botao.disabled = true; botao.textContent = 'Enviando…'; erro.hidden = true;
   try {
     const r = await fetch(`api/servicos/${finalizando.id}/finalizar`, { method: 'POST', body: corpo, headers: { 'X-Everest': '1' }, credentials: 'same-origin' });
@@ -2809,8 +2857,8 @@ async function gerarOS(s, botao) {
     y += 14;
 
     const precisa = h => { if (y + h > FIM) { doc.addPage(); y = 20; } };
-    const secao = t => {
-      y += 3; precisa(20);
+    const secao = (t, junto = 12) => {  // junto: quanto do conteúdo precisa caber com o título (não deixa título sozinho no pé da página)
+      y += 3; precisa(8 + junto);
       texto(AZUL_ESC, 8.5, 'bold'); doc.text(t.toUpperCase(), M, y, { charSpace: 0.5 });
       doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(M, y + 2, W - M, y + 2);
       y += 8;
@@ -2838,22 +2886,39 @@ async function gerarOS(s, botao) {
     campos([['Data marcada', dataBr(s.data), 0.22], ['Horário', s.hora || 'Sem horário marcado', 0.22],
             [s.equipe.length > 1 ? 'Técnicos responsáveis' : 'Técnico responsável', s.equipe.map(p => p.nome).join(', ') || 'A definir', 0.56]]);
 
+    // caixa de texto que continua na página seguinte quando é longa
+    const caixaTexto = conteudo => {
+      texto(TINTA, 10.5);
+      const linhas = doc.splitTextToSize(conteudo, L - 10);
+      for (let i = 0; i < linhas.length;) {
+        precisa(14);
+        const cabe = Math.max(1, Math.floor((FIM - y - 8) / alt())), parte = linhas.slice(i, i + cabe), h = (parte.length - 1) * alt() + 10;
+        doc.setFillColor(...GELO); doc.roundedRect(M, y - 2, L, h, 2, 2, 'F');
+        texto(TINTA, 10.5); doc.text(parte, M + 5, y + 4.2);
+        y += h + 6; i += cabe;
+      }
+    };
     secao('Serviço');
-    texto(TINTA, 10.5);
-    const desc = doc.splitTextToSize(s.descricao, L - 10);
-    for (let i = 0; i < desc.length;) {  // descrição longa continua na página seguinte
-      precisa(14);
-      const cabe = Math.max(1, Math.floor((FIM - y - 8) / alt())), parte = desc.slice(i, i + cabe), h = (parte.length - 1) * alt() + 10;
-      doc.setFillColor(...GELO); doc.roundedRect(M, y - 2, L, h, 2, 2, 'F');
-      texto(TINTA, 10.5); doc.text(parte, M + 5, y + 4.2);
-      y += h + 6; i += cabe;
+    caixaTexto(s.descricao);
+
+    // equipamentos atendidos, cada um com o seu relatório técnico
+    if (s.equipamentos.length) {
+      secao(s.equipamentos.length > 1 ? 'Equipamentos e relatório técnico' : 'Equipamento e relatório técnico');
+      s.equipamentos.forEach((e, i) => {
+        precisa(20);
+        texto(TINTA, 11, 'bold');
+        doc.text(doc.splitTextToSize((s.equipamentos.length > 1 ? `${i + 1}. ` : '') + e.equipamento, L)[0], M, y + 1);
+        y += 6;
+        if (e.relatorio) caixaTexto(e.relatorio);
+        else { texto(SUAVE, 10); doc.text('Sem relatório técnico.', M, y + 1); y += 8; }
+      });
     }
 
-    // peças e equipamentos usados (o funcionário marca ao finalizar)
-    secao('Peças e equipamentos');
+    // peças usadas (o funcionário marca ao finalizar)
+    secao('Peças utilizadas');
     const cQtd = M + L * 0.64, cUnit = M + L * 0.82, cSub = W - M;
     if (!s.pecas.length) {
-      texto(SUAVE, 10); doc.text(s.status === 'realizado' ? 'Nenhuma peça ou equipamento utilizado.' : 'Serão listados aqui quando o serviço for finalizado.', M, y + 1);
+      texto(SUAVE, 10); doc.text(s.status === 'realizado' ? 'Nenhuma peça utilizada.' : 'Serão listados aqui quando o serviço for finalizado.', M, y + 1);
       y += 10;
     } else {
       texto(SUAVE, 7.5);
@@ -2871,15 +2936,14 @@ async function gerarOS(s, botao) {
     }
 
     // valor por último: serviço + peças = total
-    secao('Valor');
-    precisa(30);
+    secao('Valor', 34);
     const vPecas = s.pecas.reduce((t, p) => t + p.qtd * p.preco, 0), y0 = y, xl = M + L * 0.5;
     texto(SUAVE, 7.5); doc.text('PAGAMENTO', M, y0, { charSpace: 0.3 });
     texto(s.pago ? [18, 128, 74] : [184, 98, 0], 10.5, 'bold');
     doc.text(s.pago ? 'Pago' + (s.pago_em ? ' em ' + dataBr(s.pago_em) : '') + (s.forma ? ' · ' + s.forma : '') : 'Pendente', M, y0 + 6.2);
     let yv = y0 + 1;
     texto(SUAVE, 10.5); doc.text('Serviço', xl, yv); doc.text(s.valor ? reais(s.valor) : 'A definir', cSub, yv, { align: 'right' });
-    if (vPecas) { yv += 6.5; doc.text('Peças e equipamentos', xl, yv); doc.text(reais(vPecas), cSub, yv, { align: 'right' }); }
+    if (vPecas) { yv += 6.5; doc.text('Peças', xl, yv); doc.text(reais(vPecas), cSub, yv, { align: 'right' }); }
     yv += 4; doc.setDrawColor(...LINHA); doc.setLineWidth(0.3); doc.line(xl, yv, cSub, yv); yv += 8;
     const total = s.valor + vPecas;
     texto(TINTA, 15, 'bold'); doc.text('Total', xl, yv); doc.text(total ? reais(total) : 'A definir', cSub, yv, { align: 'right' });
