@@ -1188,7 +1188,7 @@
     if (eu.papel !== 'admin' && !desfazerAte(s)) invalido('Já passaram 10 minutos da finalização. Peça para a Alice ou o Israel reabrir.');
     s.fotos = s.fotos.filter(f => f.em < s.status_em);
     mudarStatus(s, ['pendente', 'andamento'].includes(s.status_antes) ? s.status_antes : 'pendente');
-    if ((s.pecas || []).length) prepararPecas(s, {}, ' (finalização desfeita)')();  // as peças voltam ao estoque
+    // as peças continuam marcadas (igual ao app.py): ao finalizar de novo já vêm preenchidas
     return sj(s);
   });
   rota('POST', 'servicos/:id/pagamento', (d, q, id) => {
@@ -1582,6 +1582,9 @@ function avisar(texto, erro = false) {
 }
 
 function mostrarEntrada() {
+  // alguém estava dentro (saiu ou a sessão venceu): recomeça a página do zero, para nada de quem saiu (lembretes, listas,
+  // janelas, números) ficar na tela de quem entrar depois no mesmo aparelho
+  if (eu) { eu = null; location.replace(location.pathname); return; }
   eu = null;
   ['topo', 'app', 'rodape'].forEach(id => $('#' + id).hidden = true);
   $('#entrada').hidden = false;
@@ -1924,9 +1927,10 @@ $('#f-servico').onsubmit = async e => {
   dados.fixo = !$('#f-fixo').hidden && f.fixo.checked;
   if (editando && dados.status === editando.status) delete dados.status;
   const pecas = pecasEscolhidas(pecasServico);
-  if (JSON.stringify(pecas) !== pecasServicoAntes) dados.pecas = pecas;  // só manda se mudou (não desfaz o que o funcionário marcou)
+  // só manda se mudou, junto com o que estava ao abrir: se o funcionário mexeu nesse meio-tempo, o servidor recusa em vez de sobrescrever
+  if (JSON.stringify(pecas) !== pecasServicoAntes) Object.assign(dados, { pecas, pecas_antes: JSON.parse(pecasServicoAntes) });
   const equip = equipPreenchidos(equipServico);
-  if (JSON.stringify(equip) !== equipServicoAntes) dados.equipamentos = equip;
+  if (JSON.stringify(equip) !== equipServicoAntes) Object.assign(dados, { equipamentos: equip, equipamentos_antes: JSON.parse(equipServicoAntes) });
   botao.disabled = true; erro.hidden = true;
   try {
     const s = await api(editando ? `/servicos/${editando.id}` : '/servicos', editando ? 'PUT' : 'POST', dados);
@@ -2701,8 +2705,12 @@ $('#busca-estoque').oninput = () => desenharEstoque();
 // tempo real, como no controle de estoque do dono: a cada 2 s pergunta ao servidor se o estoque mudou em algum aparelho
 // (resposta curtinha); só quando mudou baixa a lista de novo e redesenha, sem recarregar a página. A linha que mudou pisca.
 let versaoEstoque = '', saldosVistos = {};
+let ultimaOlhadaEstoque = 0;
 setInterval(async () => {
   if (!admin() || document.hidden) return;
+  const naTela = !$('#aba-estoque').hidden || $('#j-estoque').open || $('#j-venda').open || $('#j-servico').open;
+  if (!naTela && Date.now() - ultimaOlhadaEstoque < 30000) return;
+  ultimaOlhadaEstoque = Date.now();
   try {
     const { v } = await api('/estoque/versao');
     if (v === versaoEstoque) return;
@@ -2792,10 +2800,10 @@ async function abrirItem(id) {
       <button class="botao pequeno" data-m="contagem">Contagem</button>` : ''}<button class="botao pequeno" data-editar-item>Editar</button></div>`;
   $('#j-estoque-lista').innerHTML = r.movimentos.length ? r.movimentos.map(m => `<tr>
     <td class="num">${dataBr(m.em)}<div class="miudo">${m.em.slice(11, 16)} · ${esc(m.por)}</div></td>
-    <td>${m.desfaz ? 'Correção' : m.venda_id ? 'Venda' : NOME_MOV[m.tipo]}${m.desfeito ? '<div class="miudo">desfeito</div>' : ''}</td>
+    <td>${m.desfaz ? 'Correção' : m.venda_id ? 'Venda' : m.servico_id ? 'Serviço' : NOME_MOV[m.tipo]}${m.desfeito ? '<div class="miudo">desfeito</div>' : ''}</td>
     <td class="direita num ${m.qtd > 0 ? 'mov-mais' : 'mov-menos'}">${m.qtd > 0 ? '+' : '-'}${pecas(Math.abs(m.qtd))}</td>
     <td class="todo-m miudo">${esc(m.motivo || '')}</td>
-    <td class="direita">${m.desfaz || m.desfeito || m.venda_id ? '' : `<button class="botao pequeno" data-desfazer-mov="${m.id}">Desfazer</button>`}</td></tr>`).join('')
+    <td class="direita">${m.desfaz || m.desfeito || m.venda_id || m.servico_id ? '' : `<button class="botao pequeno" data-desfazer-mov="${m.id}">Desfazer</button>`}</td></tr>`).join('')
     : '<tr><td colspan="5" class="miudo" style="padding:26px;text-align:center">Nenhum lançamento ainda.</td></tr>';
   $$('#j-estoque-topo [data-m]').forEach(b => b.onclick = () => abrirMov(i, b.dataset.m));
   $('#j-estoque-topo [data-editar-item]').onclick = () => abrirCadastroItem(i);
@@ -2818,6 +2826,10 @@ function carregarJsPdf() {
     document.head.append(sc);
   });
 }
+// a letra do PDF só conhece o alfabeto do português (acentos, °, º, aspas, travessão): emoji e símbolos raros viram lixo,
+// então saem; ≥ ≤ → viram texto
+const pdfTxt = t => String(t ?? '').replace(/≥/g, '>=').replace(/≤/g, '<=').replace(/[→⇒]/g, '->')
+  .replace(/[^\n\x20-\x7E\xA0-\xFF\u2013\u2014\u2018\u2019\u201C\u201D\u2026\u20AC\u2022]/g, '').replace(/[ \t]{2,}/g, ' ').trim();
 function logoPdf() {  // o PDF não aceita WebP: redesenha a logo sobre o azul-marinho do topo e tira um JPG (arquivo leve)
   const img = $('.topo img'), c = document.createElement('canvas'), w = Math.min(img.naturalWidth, 600), ctx = c.getContext('2d');
   c.width = w; c.height = Math.round(w * img.naturalHeight / img.naturalWidth);
@@ -2870,7 +2882,7 @@ async function gerarOS(s, botao) {
         const w = L * fr - 5;
         texto(SUAVE, 7.5); doc.text(rot.toUpperCase(), x, y, { charSpace: 0.3 });
         texto(val ? TINTA : SUAVE, 10.5, val ? 'bold' : 'normal');
-        const l = doc.splitTextToSize(val || 'Não informado', w);
+        const l = doc.splitTextToSize(pdfTxt(val) || 'Não informado', w);
         doc.text(l, x, y + 5.2);
         h = Math.max(h, 5.2 + (l.length - 1) * alt() + 2);
         x += L * fr;
@@ -2889,7 +2901,7 @@ async function gerarOS(s, botao) {
     // caixa de texto que continua na página seguinte quando é longa
     const caixaTexto = conteudo => {
       texto(TINTA, 10.5);
-      const linhas = doc.splitTextToSize(conteudo, L - 10);
+      const linhas = doc.splitTextToSize(pdfTxt(conteudo), L - 10);
       for (let i = 0; i < linhas.length;) {
         precisa(14);
         const cabe = Math.max(1, Math.floor((FIM - y - 8) / alt())), parte = linhas.slice(i, i + cabe), h = (parte.length - 1) * alt() + 10;
@@ -2907,7 +2919,7 @@ async function gerarOS(s, botao) {
       s.equipamentos.forEach((e, i) => {
         precisa(20);
         texto(TINTA, 11, 'bold');
-        doc.text(doc.splitTextToSize((s.equipamentos.length > 1 ? `${i + 1}. ` : '') + e.equipamento, L)[0], M, y + 1);
+        doc.text(doc.splitTextToSize((s.equipamentos.length > 1 ? `${i + 1}. ` : '') + pdfTxt(e.equipamento), L)[0], M, y + 1);
         y += 6;
         if (e.relatorio) caixaTexto(e.relatorio);
         else { texto(SUAVE, 10); doc.text('Sem relatório técnico.', M, y + 1); y += 8; }
@@ -2926,7 +2938,7 @@ async function gerarOS(s, botao) {
       y += 6;
       s.pecas.forEach(p => {
         precisa(8);
-        texto(TINTA, 10.5); doc.text(doc.splitTextToSize(p.nome, L * 0.55)[0], M, y);
+        texto(TINTA, 10.5); doc.text(doc.splitTextToSize(pdfTxt(p.nome), L * 0.55)[0], M, y);
         doc.text(String(p.qtd), cQtd, y, { align: 'right' }); doc.text(reais(p.preco), cUnit, y, { align: 'right' });
         texto(TINTA, 10.5, 'bold'); doc.text(reais(p.qtd * p.preco), cSub, y, { align: 'right' });
         doc.setDrawColor(...LINHA); doc.setLineWidth(0.2); doc.line(M, y + 2.6, W - M, y + 2.6);
@@ -3068,7 +3080,7 @@ $('#sair').onclick = async () => {
   // este aparelho para de receber os avisos de quem saiu
   const s = await inscricaoAtual().catch(() => null);
   if (s) { await api('/avisos/sair', 'POST', { endpoint: s.endpoint }).catch(() => {}); await s.unsubscribe().catch(() => {}); }
-  await api('/sair', 'POST').catch(() => {}); semana = []; clientes = []; mostrarEntrada(); };
+  await api('/sair', 'POST').catch(() => {}); mostrarEntrada(); };
 
 api('/eu').then(r => { eu = r; mostrarSistema(); }).catch(() => {});
 </script>
