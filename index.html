@@ -196,6 +196,11 @@
   .linha-peca button { width: 40px; height: 40px; padding: 0; color: var(--urgente); font-size: 20px; background: none; border: 1px solid var(--linha); border-radius: 10px; cursor: pointer; }
   .linhas-pecas > .botao { justify-self: start; }
   .pecas-card { margin: 8px 0 0; font-size: 14px; color: var(--suave); }
+  .locais-card a { white-space: nowrap; }
+  #mapa-equipe { height: 380px; margin-bottom: 12px; border: 1px solid var(--linha); border-radius: 14px; overflow: hidden; background: var(--gelo); }
+  .nome-mapa { padding: 2px 8px !important; font: 700 12px var(--fonte) !important; color: #fff !important; background: var(--noite) !important; border: 0 !important; border-radius: 999px !important; box-shadow: none !important; }
+  .nome-mapa::before { display: none; }
+  @media (max-width: 760px) { #mapa-equipe { height: 300px; } }
   .linhas-equip { display: grid; gap: 10px; }
   .linha-equip { display: grid; grid-template-columns: 1fr 40px; gap: 8px; padding: 12px; background: var(--gelo); border-radius: 12px; }
   .linha-equip input, .linha-equip textarea { width: 100%; min-width: 0; padding: 10px; background: var(--papel); border: 1px solid var(--linha); border-radius: 10px; }
@@ -641,6 +646,11 @@
       <thead><tr><th>Nome</th><th>Usuário de entrada</th><th>Avisos no celular</th><th>Acesso</th><th></th></tr></thead>
       <tbody id="equipe-lista"></tbody>
     </table>
+    <div class="titulo-sec" style="margin-top:28px"><h2 class="titulo-sub" style="margin:0 auto 0 0">Onde a equipe esteve</h2>
+      <input type="date" id="mapa-dia" aria-label="Dia do mapa"></div>
+    <p class="contagem">O celular do técnico registra o lugar quando ele aperta "Estou a caminho" e quando finaliza o serviço.</p>
+    <div id="mapa-equipe"></div>
+    <table class="tabela"><tbody id="mapa-lista"></tbody></table>
   </section>
 </main>
 
@@ -803,7 +813,7 @@
         <label class="botao cheio grande"><input type="file" accept="image/*" capture="environment" hidden data-foto><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg> Tirar foto</label>
         <label class="botao grande"><input type="file" accept="image/*" multiple hidden data-foto>Escolher da galeria</label>
       </div>
-      <span class="miudo">Só a Alice e o Israel veem as fotos.</span>
+      <span class="miudo">Só a Alice e o Israel veem as fotos. Ao finalizar, o sistema também registra onde você está (só eles veem).</span>
     </div>
     <div class="campo todo"><span>Equipamentos atendidos e relatório técnico</span>
       <div class="linhas-equip" id="f-finalizar-equip"></div>
@@ -923,7 +933,7 @@
 // próprio aparelho. Responde às mesmas chamadas do app.py, então as telas são exatamente as do sistema real.
 // ponytail: regras copiadas do app.py de forma resumida; a fonte da verdade continua sendo o app.py.
 (() => {
-  const CHAVE = 'everest-demo-v8';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
+  const CHAVE = 'everest-demo-v9';  // v2: estoque, DRE e ordem de serviço (quem já abriu a v1 recomeça com os exemplos novos)
   const FORMAS = ['Pix', 'Dinheiro', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Outro'];
   const CATEGORIAS = ['Combustível', 'Materiais', 'Ferramentas', 'Alimentação', 'Manutenção', 'Compras', 'Mercado Livre', 'Salários e equipe', 'Impostos e taxas', 'Aluguel e contas', 'Outros'];
   const CATEGORIAS_NOTA = ['Clientes', 'Serviços', 'Compras', 'Pendências', 'Administrativo', 'Outros'];
@@ -964,7 +974,7 @@
 
   // ── dados de exemplo ──
   function semear() {
-    const d = { seq: 1000, sessao: null, envios: {}, fechamentos: {}, divisoes: [], notas: [], vendas: [], despesas: [], servicos: [], clientes: [], produtos: [], movimentos: [], preventivas: [],
+    const d = { seq: 1000, sessao: null, envios: {}, fechamentos: {}, divisoes: [], notas: [], vendas: [], despesas: [], servicos: [], clientes: [], produtos: [], movimentos: [], preventivas: [], locais: [],
       ml: { configurado: true, conectado: true, ultima_busca: null, buscou: false } };
     const id = () => ++d.seq;
     d.usuarios = [
@@ -1045,6 +1055,12 @@
       equipamentos: [{ equipamento: 'Split Midea 9.000 BTUs · balcão', relatorio: 'Aparelho não ligava. Capacitor de partida estufado e sensor de temperatura com leitura errada. Trocados os dois, limpeza do filtro e teste: gelando normal (saída a 12 °C).' },
         { equipamento: 'Freezer horizontal · estoque', relatorio: 'Revisão preventiva: borrachas da porta em bom estado, sem vazamento. Recomendado limpar o condensador a cada 3 meses.' }],
       pecas: [{ produto_id: pecaId['Capacitor 35 uF'], qtd: 1, preco: 45 }, { produto_id: pecaId['Sensor de temperatura'], qtd: 1, preco: 38 }] });
+    // onde o João estava ao sair e ao finalizar (Vila do Abraão)
+    const hora = (h, m) => { const x = new Date(); x.setHours(h, m, 0, 0); return `${iso(x)}T${z(h)}:${z(m)}:00-03:00`; };
+    d.locais.push({ usuario_id: 3, servico_id: feito.id, evento: 'finalizou', lat: -23.14276, lng: -44.16879, precisao: 12, em: hora(8, 5) },
+      { usuario_id: 3, servico_id: acai.id, evento: 'caminho', lat: -23.14276, lng: -44.16879, precisao: 18, em: hora(10, 40) },
+      { usuario_id: 3, servico_id: acai.id, evento: 'finalizou', lat: -23.14421, lng: -44.17125, precisao: 9, em: hora(11, 32) });
+    acai.a_caminho_em = hora(10, 40);
     acai.pecas.forEach(p => d.movimentos.push({ id: id(), produto_id: p.produto_id, qtd: -p.qtd, tipo: 'saida', servico_id: acai.id,
       motivo: `Serviço ${acai.criado_em.slice(0, 4)}-${String(acai.id).padStart(5, '0')} · Açaí da Praia`, por: 'João', em: agora() }));
     nota({ texto: 'Clínica Sorriso: os 3 aparelhos são de 2015. Sugerir troca por inverter no orçamento.', categoria: 'Serviços', por: 'Israel' });
@@ -1075,7 +1091,10 @@
     const pecas = (s.pecas || []).map(p => ({ produto_id: p.produto_id, nome: (db.produtos.find(x => x.id === p.produto_id) || {}).nome, qtd: p.qtd, preco: p.preco }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     if (eu.papel !== 'admin') { ['valor', 'pago', 'pago_em', 'forma', 'fotos'].forEach(k => delete r[k]); r.pecas = pecas.map(({ preco, ...p }) => p); }
-    else { r.pecas = pecas; r.total = Math.round(cent(s.valor) + cent(valorPecas(s))) / 100; }
+    else {
+      r.pecas = pecas; r.total = Math.round(cent(s.valor) + cent(valorPecas(s))) / 100;
+      r.locais = (db.locais || []).filter(l => l.servico_id === s.id).sort((a, b) => a.em.localeCompare(b.em)).map(l => ({ ...l, nome: nomeDe(l.usuario_id) }));
+    }
     return r;
   };
   const valorPecas = s => Math.round((s.pecas || []).reduce((t, p) => t + p.qtd * cent(p.preco), 0)) / 100;
@@ -1187,8 +1206,24 @@
     admin(); db.servicos.forEach(s => { if (s.preventiva_id === +id) s.preventiva_id = null; }); db.preventivas = (db.preventivas || []).filter(p => p.id !== +id);
   });
   // ── "estou a caminho" e link de acompanhamento ──
+  // GPS: igual ao app.py (sem GPS ou valor estranho, segue sem)
+  const lerLocal = d => {
+    const lat = parseFloat(d.lat), lng = parseFloat(d.lng), precisao = d.precisao !== undefined && d.precisao !== '' ? Math.round(parseFloat(d.precisao)) : null;
+    if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (!lat && !lng)) return null;
+    return { lat, lng, precisao: isNaN(precisao) ? null : precisao };
+  };
+  const gravarLocal = (s, evento, local) => { if (local) (db.locais = db.locais || []).push({ usuario_id: eu.id, servico_id: s.id, evento, ...local, em: agora() }); };
+  rota('GET', 'localizacoes', (d, q) => {
+    admin(); const dia = q.get('dia') || hoje();
+    return (db.locais || []).filter(l => l.em.startsWith(dia)).sort((a, b) => a.em.localeCompare(b.em)).map(l => {
+      const s = db.servicos.find(x => x.id === l.servico_id);
+      return { ...l, nome: nomeDe(l.usuario_id), cliente: s ? clienteDe(s).nome : null, descricao: s ? s.descricao : null };
+    });
+  });
   rota('POST', 'servicos/:id/a-caminho', (d, q, id) => {
-    const s = um(id); if (s.status === 'realizado') invalido('Esse serviço já foi finalizado.'); s.a_caminho_em = s.a_caminho_em || agora(); return sj(s);
+    const s = um(id); if (s.status === 'realizado') invalido('Esse serviço já foi finalizado.');
+    if (!s.a_caminho_em) gravarLocal(s, 'caminho', lerLocal(d));
+    s.a_caminho_em = s.a_caminho_em || agora(); return sj(s);
   });
   rota('POST', 'servicos/:id/link', (d, q, id) => { admin(); const s = um(id); s.codigo = s.codigo || 'demo' + s.id; return { codigo: s.codigo, url: '#' }; });
   rota('GET', 'publico/([\\w-]+)', (d, q, codigo) => {
@@ -1255,6 +1290,7 @@
     const equipamentos = d.has('equipamentos') ? lerEquipamentos(d.get('equipamentos')) : null;
     mudarStatus(s, 'realizado'); gravar();
     if (equipamentos) s.equipamentos = equipamentos;
+    gravarLocal(s, 'finalizou', lerLocal(Object.fromEntries(['lat', 'lng', 'precisao'].filter(k => d.has(k)).map(k => [k, d.get(k)]))));
     for (const f of fotos.slice(0, 10)) s.fotos.push({ id: novoId(), url: await lerArquivo(f), por: eu.nome, em: agora() });
     return sj(s);
   });
@@ -1812,7 +1848,7 @@ function abrirAba(nome) {
   if (nome === 'clientes') { clientes = []; carregarClientes().then(desenharClientes); carregarPreventivas(); }
   if (nome === 'agenda') carregarSemana();
   if (nome === 'historico') buscar();
-  if (nome === 'equipe') carregarEquipe().then(desenharEquipe);
+  if (nome === 'equipe') { carregarEquipe().then(desenharEquipe); mostrarMapa(); }
 }
 $$('.abas button').forEach(b => b.onclick = () => abrirAba(b.dataset.aba));
 
@@ -1908,6 +1944,7 @@ function cartao(s) {
         ${zap ? `<a href="https://wa.me/${zap}" target="_blank" rel="noopener">${ICONE.zap}WhatsApp</a>` : ''}
       </p>
       <div class="pessoas">${pessoas}</div>
+      ${s.locais && s.locais.length ? `<p class="pecas-card locais-card">${s.locais.map(l => `<a href="${mapaUrl(l)}" target="_blank" rel="noopener">${ICONE.local}${l.evento === 'caminho' ? 'Saiu' : 'Finalizou'} às ${l.em.slice(11, 16)}</a>`).join(' · ')}</p>` : ''}
       ${s.equipamentos && s.equipamentos.length ? `<p class="pecas-card">Equipamentos: ${s.equipamentos.map(e => esc(e.equipamento)).join(', ')}</p>` : ''}
       ${s.pecas && s.pecas.length ? `<p class="pecas-card">Peças: ${s.pecas.map(p => `${p.qtd}× ${esc(p.nome)}`).join(', ')}</p>` : ''}
       ${nota ? `<p class="nota">${nota}</p>` : ''}
@@ -1922,7 +1959,8 @@ async function acaoCartao(b) {
   if (b.dataset.acao === 'link') return linkCliente(s, b);
   if (b.dataset.acao === 'caminho') {
     b.disabled = true;
-    try { await api(`/servicos/${s.id}/a-caminho`, 'POST', {}); avisar('Pronto: o cliente vê que você está a caminho.'); await carregarSemana(); }
+    b.textContent = 'Pegando sua localização…';
+    try { await api(`/servicos/${s.id}/a-caminho`, 'POST', (await pegarLocal()) || {}); avisar('Pronto: o cliente vê que você está a caminho.'); await carregarSemana(); }
     catch (e) { avisar(e.message, true); b.disabled = false; }
     return;
   }
@@ -1938,6 +1976,15 @@ async function acaoCartao(b) {
     await carregarSemana();
   } catch (e) { avisar(e.message, true); b.disabled = false; }
 }
+
+// posição do celular agora (para "Estou a caminho" e "Finalizar"). Sem GPS, recusado ou demorou: segue sem (null)
+function pegarLocal() {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise(ok => navigator.geolocation.getCurrentPosition(
+    p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precisao: Math.round(p.coords.accuracy) }),
+    () => ok(null), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }));
+}
+const mapaUrl = l => `https://www.google.com/maps?q=${l.lat},${l.lng}`;
 
 // link para o cliente acompanhar o atendimento: abre o WhatsApp dele com a mensagem pronta (ou compartilha / copia)
 async function linkCliente(s, b) {
@@ -2157,8 +2204,11 @@ $('#f-finalizar').onsubmit = async e => {
   fotosEscolhidas.forEach((b, i) => corpo.append('foto', b, `servico-${finalizando.id}-${i + 1}.jpg`));
   corpo.append('pecas', JSON.stringify(pecasEscolhidas(pecasFinalizar)));
   corpo.append('equipamentos', JSON.stringify(equipPreenchidos(equipFinalizar)));
-  botao.disabled = true; botao.textContent = 'Enviando…'; erro.hidden = true;
+  botao.disabled = true; botao.textContent = 'Pegando sua localização…'; erro.hidden = true;
   try {
+    const local = await pegarLocal();
+    if (local) Object.entries(local).forEach(([k, v]) => corpo.append(k, v));
+    botao.textContent = 'Enviando…';
     const r = await fetch(`api/servicos/${finalizando.id}/finalizar`, { method: 'POST', body: corpo, headers: { 'X-Everest': '1' }, credentials: 'same-origin' });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || 'Não consegui enviar. Confira a internet e tente de novo.');
     $('#j-finalizar').close(); avisar('Serviço finalizado.'); await carregarSemana();
@@ -2206,6 +2256,51 @@ async function abrirCliente(id) {
 }
 
 // ── equipe ──
+let leaflet = null, mapa = null, camadaMapa = null;
+function carregarLeaflet() {
+  return leaflet ||= new Promise((ok, falha) => {
+    const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
+      integrity: 'sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb', crossOrigin: 'anonymous' });
+    const js = Object.assign(document.createElement('script'), { src: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+      integrity: 'sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO', crossOrigin: 'anonymous' });
+    js.onload = () => ok(window.L);
+    js.onerror = () => { leaflet = null; css.remove(); js.remove(); falha(new Error('Não deu para carregar o mapa. Confira a internet.')); };
+    document.head.append(css, js);
+  });
+}
+const NOME_EVENTO = { caminho: 'Saiu para', finalizou: 'Finalizou' };
+async function mostrarMapa() {
+  const campo = $('#mapa-dia'); if (!campo.value) campo.value = iso(new Date());
+  const pontos = await api('/localizacoes?dia=' + campo.value);
+  $('#mapa-lista').innerHTML = pontos.length ? pontos.slice().reverse().map(p => `<tr>
+    <td class="num">${p.em.slice(11, 16)}</td><td><b>${esc(p.nome)}</b></td>
+    <td class="todo-m">${NOME_EVENTO[p.evento]} ${esc(p.cliente || 'serviço excluído')}${p.precisao ? `<div class="miudo">precisão de uns ${p.precisao} m</div>` : ''}</td>
+    <td class="direita"><a href="${mapaUrl(p)}" target="_blank" rel="noopener">Abrir no mapa</a></td></tr>`).join('')
+    : '<tr><td class="miudo" style="padding:22px;text-align:center">Nenhuma localização neste dia.</td></tr>';
+  let L;
+  try { L = await carregarLeaflet(); } catch (e) { $('#mapa-equipe').innerHTML = `<p class="miudo" style="padding:20px">${esc(e.message)}</p>`; return; }
+  if (!mapa) {
+    mapa = L.map('mapa-equipe', { scrollWheelZoom: false }).setView([-23.14, -44.17], 13);  // Ilha Grande
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(mapa);
+  }
+  if (camadaMapa) camadaMapa.remove();
+  camadaMapa = L.layerGroup().addTo(mapa);
+  const ultimo = {};  // último ponto de cada pessoa ganha o nome no mapa
+  pontos.forEach(p => ultimo[p.usuario_id] = p);
+  pontos.forEach(p => {
+    const destaque = ultimo[p.usuario_id] === p;
+    const m = L.circleMarker([p.lat, p.lng], { radius: destaque ? 9 : 6, color: '#fff', weight: 2, fillOpacity: 1,
+      fillColor: p.evento === 'finalizou' ? '#12804a' : '#0091e8' }).addTo(camadaMapa)
+      .bindPopup(`<b>${esc(p.nome)}</b><br>${NOME_EVENTO[p.evento]} ${esc(p.cliente || '')}<br>às ${p.em.slice(11, 16)}`);
+    if (destaque) m.bindTooltip(esc(p.nome.split(' ')[0]), { permanent: true, direction: 'top', className: 'nome-mapa', offset: [0, -8] });
+  });
+  setTimeout(() => {
+    mapa.invalidateSize();
+    if (pontos.length) mapa.fitBounds(L.latLngBounds(pontos.map(p => [p.lat, p.lng])).pad(0.3), { maxZoom: 16 });
+  }, 50);
+}
+$('#mapa-dia').onchange = () => mostrarMapa().catch(e => avisar(e.message, true));
+
 function desenharEquipe() {
   $('#equipe-lista').innerHTML = equipe.map(p => `<tr${p.ativo ? '' : ' style="opacity:.55"'}>
     <td><b>${esc(p.nome)}</b>${p.ativo ? '' : ' <span class="miudo">(desativado)</span>'}</td>
@@ -3280,6 +3375,9 @@ window.PAGINA_ACOMPANHAR = "<!doctype html>\n<html lang=\"pt-BR\">\n<head>\n<met
     document.querySelectorAll('a[href="api/mercadolivre/conectar"]').forEach(a => { a.removeAttribute('href'); });
   };
   new MutationObserver(trocar).observe(document.body, { childList: true, subtree: true });
+
+  // GPS da demonstração: um ponto na Vila do Abraão (no sistema real é o GPS do celular do técnico)
+  window.pegarLocal = async () => ({ lat: -23.1435 + (Math.random() - .5) * .004, lng: -44.1695 + (Math.random() - .5) * .006, precisao: 10 + Math.round(Math.random() * 15) });
 
   // "Link do cliente": no sistema real abre o WhatsApp do cliente com o link; aqui mostra a página que ele vê
   const jCliente = document.createElement('dialog');
