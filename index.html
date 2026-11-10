@@ -1985,10 +1985,10 @@ let finalizando = null, fotosEscolhidas = [];
 async function encolher(arquivo) {
   try {
     const img = await createImageBitmap(arquivo, { imageOrientation: 'from-image' });
-    const escala = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const escala = Math.min(1, 1280 / Math.max(img.width, img.height));  // o servidor guarda com 1280 px: mandar maior só gasta internet
     const tela = Object.assign(document.createElement('canvas'), { width: Math.round(img.width * escala), height: Math.round(img.height * escala) });
     tela.getContext('2d').drawImage(img, 0, 0, tela.width, tela.height);
-    return await new Promise(ok => tela.toBlob(b => ok(b || arquivo), 'image/jpeg', .85));
+    return await new Promise(ok => tela.toBlob(b => ok(b || arquivo), 'image/jpeg', .8));
   } catch (e) { return arquivo; }  // não deu para diminuir aqui: o servidor diminui
 }
 // linhas "peça + quantidade" usadas no finalizar (funcionário) e no editar serviço (admin)
@@ -2043,7 +2043,8 @@ function desenharFotosEscolhidas() {
 }
 $$('#f-finalizar [data-foto]').forEach(entrada => entrada.onchange = async () => {
   for (const a of entrada.files) fotosEscolhidas.push(await encolher(a));
-  fotosEscolhidas = fotosEscolhidas.slice(0, 10);
+  if (fotosEscolhidas.length > 6) avisar('Até 6 fotos por serviço: ficaram as 6 primeiras.');
+  fotosEscolhidas = fotosEscolhidas.slice(0, 6);
   entrada.value = '';
   desenharFotosEscolhidas();
 });
